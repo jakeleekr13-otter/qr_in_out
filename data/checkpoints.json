@@ -1,0 +1,36 @@
+[
+  {
+    "id": "b4d9315e-5bdf-474d-ba7e-a61fe6413c9d",
+    "name": "Check point 1",
+    "location": "서울시 용산구",
+    "allowed_hours": {
+      "start_time": "09:00",
+      "end_time": "18:00"
+    },
+    "qr_mode": "dynamic",
+    "admin_password_hash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+    "allowed_guests": [],
+    "current_qr_sequence": 15,
+    "deleted_at": null,
+    "created_at": "2026-02-05T01:42:53.027099+00:00",
+    "updated_at": "2026-02-05T02:09:35.249842+00:00"
+  },
+  {
+    "id": "b5e59cb4-b7b8-4e35-9e4e-82f6ecdb1561",
+    "name": "Check point 2",
+    "location": "1st floor",
+    "allowed_hours": {
+      "start_time": "09:00",
+      "end_time": "18:00"
+    },
+    "qr_mode": "static",
+    "admin_password_hash": "03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4",
+    "allowed_guests": [
+      "b2a13182-e589-4c7b-9163-6810384bcd13"
+    ],
+    "current_qr_sequence": 0,
+    "deleted_at": null,
+    "created_at": "2026-02-05T02:08:49.021796+00:00",
+    "updated_at": "2026-02-05T02:08:49.021796+00:00"
+  }
+]

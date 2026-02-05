@@ -1,0 +1,11 @@
+[
+  {
+    "id": "admin_settings",
+    "admin_timezone": "Asia/Seoul",
+    "default_guest_timezone": "Asia/Seoul",
+    "qr_refresh_interval": 1800,
+    "require_time_sync": true,
+    "created_at": "2026-02-05T01:42:23.267626+00:00",
+    "updated_at": "2026-02-05T01:42:23.267626+00:00"
+  }
+]
