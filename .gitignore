@@ -61,6 +61,9 @@ Thumbs.db
 tmp/
 temp/
 
+# Screenshot backup data (capture script)
+data_backup_screenshots/
+
 # pytest
 .pytest_cache/
 .coverage
@@ -74,3 +77,6 @@ dmypy.json
 # Test files
 test_*.py
 *_test.py
+
+# Internal Security Documents
+docs/SECURITY.md

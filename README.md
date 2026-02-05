@@ -1,10 +1,25 @@
 # QR In/Out - QR Code-Based Checkpoint Access Management System
 
+[![Stars](https://img.shields.io/github/stars/jakeleekr13-otter/qr_in_out?style=social)](https://github.com/jakeleekr13-otter/qr_in_out/stargazers)
+[![Sponsors](https://img.shields.io/github/sponsors/jakeleekr13-otter)](https://github.com/sponsors/jakeleekr13-otter)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-red)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 [한국어 문서](README.ko.md) | **English**
+
+<table>
+  <tr>
+    <td><img src="assets/screenshots/06_admin_statistics.png" alt="Admin Statistics Dashboard" width="400"/></td>
+    <td><img src="assets/screenshots/08_host_qr_display.png" alt="Host QR Code Display" width="400"/></td>
+    <td><img src="assets/screenshots/10_guest_scan.png" alt="Guest QR Scan" width="400"/></td>
+  </tr>
+  <tr>
+    <td align="center"><b>Admin Dashboard</b></td>
+    <td align="center"><b>Host QR Display</b></td>
+    <td align="center"><b>Guest Check-In</b></td>
+  </tr>
+</table>
 
 ---
 
@@ -30,7 +45,7 @@
   - Overnight shift support (e.g., 22:00 - 06:00)
 
 - **Security Features**
-  - Password-protected admin and checkpoint access
+  - bcrypt password hashing for admin and checkpoint access
   - HMAC-SHA256 signatures for dynamic QR codes
   - Sequence number validation to prevent replay attacks
   - Time synchronization via World Time API to prevent local time manipulation
@@ -41,6 +56,45 @@
   - Thread-safe concurrent access
   - Offline operation capability
   - Activity log persistence
+
+---
+
+## Screenshots
+
+<details>
+<summary><b>Click to view all screenshots</b></summary>
+
+### Home
+<img src="assets/screenshots/01_home.png" alt="Home Page" width="700"/>
+
+### Admin
+| Admin Login | Checkpoint Management |
+|---|---|
+| <img src="assets/screenshots/02_admin_login.png" alt="Admin Login" width="400"/> | <img src="assets/screenshots/03_admin_checkpoints.png" alt="Checkpoint Management" width="400"/> |
+
+| Guest Management | Activity Logs |
+|---|---|
+| <img src="assets/screenshots/04_admin_guests.png" alt="Guest Management" width="400"/> | <img src="assets/screenshots/05_admin_logs.png" alt="Activity Logs" width="400"/> |
+
+| Statistics Dashboard |
+|---|
+| <img src="assets/screenshots/06_admin_statistics.png" alt="Statistics Dashboard" width="600"/> |
+
+### Host
+| Host Login | QR Code Display |
+|---|---|
+| <img src="assets/screenshots/07_host_login.png" alt="Host Login" width="400"/> | <img src="assets/screenshots/08_host_qr_display.png" alt="QR Code Display" width="400"/> |
+
+### Guest
+| Guest Login | QR Scan |
+|---|---|
+| <img src="assets/screenshots/09_guest_login.png" alt="Guest Login" width="400"/> | <img src="assets/screenshots/10_guest_scan.png" alt="QR Scan" width="400"/> |
+
+| Visit History |
+|---|
+| <img src="assets/screenshots/11_guest_history.png" alt="Visit History" width="600"/> |
+
+</details>
 
 ---
 
@@ -59,22 +113,23 @@
 
 ## Installation
 
-### 1. Clone Repository
+### Option A: Install via pip (Recommended)
 
 ```bash
-git clone https://github.com/yourusername/qr-in-out.git
-cd qr-in-out
+pip install qr-in-out
 ```
 
-### 2. Install Python Dependencies
+### Option B: Install from source
 
 ```bash
+git clone https://github.com/jakeleekr13-otter/qr_in_out.git
+cd qr_in_out
 pip install -r requirements.txt
 ```
 
-### 3. Install System Dependencies (QR Scanning Support)
+### System Dependencies (QR Scanning)
 
-The `pyzbar` library requires the `zbar` shared library.
+The `pyzbar` library requires the `zbar` shared library:
 
 **macOS (Homebrew):**
 ```bash
@@ -89,7 +144,15 @@ sudo apt-get install libzbar0
 **Windows:**
 Usually `pip install pyzbar` includes necessary DLLs. If issues occur, install [Visual C++ Redistributable Packages](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads).
 
-### 4. Run Application
+### Environment Setup
+
+```bash
+cp .env.example .env
+# Edit .env and set QR_SECRET_KEY (min 32 characters)
+# Generate a key: python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### Run
 
 ```bash
 streamlit run app.py
@@ -468,7 +531,7 @@ We welcome contributions! Please follow these guidelines:
 
 ```bash
 # Clone your fork
-git clone https://github.com/yourusername/qr-in-out.git
+git clone https://github.com/jakeleekr13-otter/qr_in_out.git
 cd qr-in-out
 
 # Create virtual environment
@@ -498,7 +561,7 @@ streamlit run app.py
 
 ### Planned Features
 
-- [ ] **Enhanced Security**: Migrate to bcrypt/argon2 password hashing
+- [x] **Enhanced Security**: bcrypt password hashing (completed in v1.0)
 - [ ] **Multi-Language Support**: Internationalization (i18n)
 - [ ] **Database Backend**: PostgreSQL/MySQL option for larger deployments
 - [ ] **Email Notifications**: Alert guests on check-in/out
@@ -530,8 +593,20 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Support
 
 - **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/qr-in-out/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/qr-in-out/discussions)
+- **Issues**: [GitHub Issues](https://github.com/jakeleekr13-otter/qr_in_out/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/jakeleekr13-otter/qr_in_out/discussions)
+
+---
+
+## 💖 Support
+
+If you find this tool useful, please consider supporting development!
+
+- ⭐ **Star this repo**: It helps a lot!
+- 💖 **Sponsor me on GitHub**: [https://github.com/sponsors/jakeleekr13-otter](https://github.com/sponsors/jakeleekr13-otter)
+- ☕ **Buy Me a Coffee**: [https://buymeacoffee.com/jakeleekr13otter](https://buymeacoffee.com/jakeleekr13otter)
+
+Your support helps improve and maintain this project.
 
 ---
 

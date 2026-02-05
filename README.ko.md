@@ -1,10 +1,25 @@
 # QR In/Out - QR 코드 기반 체크포인트 출입 관리 시스템
 
+[![Stars](https://img.shields.io/github/stars/jakeleekr13-otter/qr_in_out?style=social)](https://github.com/jakeleekr13-otter/qr_in_out/stargazers)
+[![Sponsors](https://img.shields.io/github/sponsors/jakeleekr13-otter)](https://github.com/sponsors/jakeleekr13-otter)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-blue)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-red)](https://streamlit.io/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 **한국어** | [English](README.md)
+
+<table>
+  <tr>
+    <td><img src="assets/screenshots/06_admin_statistics.png" alt="관리자 통계 대시보드" width="400"/></td>
+    <td><img src="assets/screenshots/08_host_qr_display.png" alt="호스트 QR 코드 표시" width="400"/></td>
+    <td><img src="assets/screenshots/10_guest_scan.png" alt="방문객 QR 스캔" width="400"/></td>
+  </tr>
+  <tr>
+    <td align="center"><b>관리자 대시보드</b></td>
+    <td align="center"><b>호스트 QR 표시</b></td>
+    <td align="center"><b>방문객 체크인</b></td>
+  </tr>
+</table>
 
 ---
 
@@ -30,7 +45,7 @@
   - 야간 근무 지원 (예: 22:00 - 06:00)
 
 - **보안 기능**
-  - 비밀번호로 보호되는 관리자 및 체크포인트 접근
+  - bcrypt 비밀번호 해싱으로 관리자 및 체크포인트 접근 보호
   - 동적 QR 코드의 HMAC-SHA256 서명
   - 재사용 공격 방지를 위한 순차 번호 검증
   - 로컬 시간 조작 방지를 위한 World Time API 시간 동기화
@@ -41,6 +56,45 @@
   - 스레드 안전 동시 접근
   - 오프라인 작동 가능
   - 활동 기록 영구 저장
+
+---
+
+## 스크린샷
+
+<details>
+<summary><b>전체 스크린샷 보기</b></summary>
+
+### 홈
+<img src="assets/screenshots/01_home.png" alt="홈 페이지" width="700"/>
+
+### Admin (관리자)
+| 관리자 로그인 | 체크포인트 관리 |
+|---|---|
+| <img src="assets/screenshots/02_admin_login.png" alt="관리자 로그인" width="400"/> | <img src="assets/screenshots/03_admin_checkpoints.png" alt="체크포인트 관리" width="400"/> |
+
+| 방문객 관리 | 활동 기록 |
+|---|---|
+| <img src="assets/screenshots/04_admin_guests.png" alt="방문객 관리" width="400"/> | <img src="assets/screenshots/05_admin_logs.png" alt="활동 기록" width="400"/> |
+
+| 통계 대시보드 |
+|---|
+| <img src="assets/screenshots/06_admin_statistics.png" alt="통계 대시보드" width="600"/> |
+
+### Host (호스트)
+| 호스트 로그인 | QR 코드 표시 |
+|---|---|
+| <img src="assets/screenshots/07_host_login.png" alt="호스트 로그인" width="400"/> | <img src="assets/screenshots/08_host_qr_display.png" alt="QR 코드 표시" width="400"/> |
+
+### Guest (방문객)
+| 방문객 로그인 | QR 스캔 |
+|---|---|
+| <img src="assets/screenshots/09_guest_login.png" alt="방문객 로그인" width="400"/> | <img src="assets/screenshots/10_guest_scan.png" alt="QR 스캔" width="400"/> |
+
+| 방문 기록 |
+|---|
+| <img src="assets/screenshots/11_guest_history.png" alt="방문 기록" width="600"/> |
+
+</details>
 
 ---
 
@@ -59,22 +113,23 @@
 
 ## 설치 방법
 
-### 1. 저장소 클론
+### 방법 A: pip으로 설치 (권장)
 
 ```bash
-git clone https://github.com/yourusername/qr-in-out.git
-cd qr-in-out
+pip install qr-in-out
 ```
 
-### 2. Python 의존성 설치
+### 방법 B: 소스에서 설치
 
 ```bash
+git clone https://github.com/jakeleekr13-otter/qr_in_out.git
+cd qr_in_out
 pip install -r requirements.txt
 ```
 
-### 3. 시스템 의존성 설치 (QR 스캔 지원)
+### 시스템 의존성 (QR 스캔)
 
-`pyzbar` 라이브러리는 `zbar` 공유 라이브러리가 필요합니다.
+`pyzbar` 라이브러리는 `zbar` 공유 라이브러리가 필요합니다:
 
 **macOS (Homebrew):**
 ```bash
@@ -89,7 +144,15 @@ sudo apt-get install libzbar0
 **Windows:**
 일반적으로 `pip install pyzbar`가 필요한 DLL을 포함합니다. 문제가 발생하면 [Visual C++ 재배포 가능 패키지](https://support.microsoft.com/ko-kr/help/2977003/the-latest-supported-visual-c-downloads)를 설치하세요.
 
-### 4. 애플리케이션 실행
+### 환경 설정
+
+```bash
+cp .env.example .env
+# .env를 편집하여 QR_SECRET_KEY 설정 (최소 32자)
+# 키 생성: python -c "import secrets; print(secrets.token_hex(32))"
+```
+
+### 실행
 
 ```bash
 streamlit run app.py
@@ -441,7 +504,7 @@ sudo apt-get install libzbar0
 
 ```bash
 # Fork 클론
-git clone https://github.com/yourusername/qr-in-out.git
+git clone https://github.com/jakeleekr13-otter/qr_in_out.git
 cd qr-in-out
 
 # 가상 환경 생성
@@ -471,7 +534,7 @@ streamlit run app.py
 
 ### 계획된 기능
 
-- [ ] **향상된 보안**: bcrypt/argon2 비밀번호 해싱으로 마이그레이션
+- [x] **향상된 보안**: bcrypt 비밀번호 해싱 (v1.0 완료)
 - [ ] **다국어 지원**: 국제화 (i18n)
 - [ ] **데이터베이스 백엔드**: 대규모 배포를 위한 PostgreSQL/MySQL 옵션
 - [ ] **이메일 알림**: 체크인/체크아웃 시 방문객에게 알림
@@ -503,8 +566,20 @@ streamlit run app.py
 ## 지원
 
 - **문서**: [docs/](docs/)
-- **이슈**: [GitHub Issues](https://github.com/yourusername/qr-in-out/issues)
-- **토론**: [GitHub Discussions](https://github.com/yourusername/qr-in-out/discussions)
+- **이슈**: [GitHub Issues](https://github.com/jakeleekr13-otter/qr_in_out/issues)
+- **토론**: [GitHub Discussions](https://github.com/jakeleekr13-otter/qr_in_out/discussions)
+
+---
+
+## 💖 후원 (Support)
+
+이 도구가 유용하다면 개발을 지원해주세요!
+
+- ⭐ **Star 누르기**: 이 저장소에 별을 눌러주세요!
+- 💖 **GitHub Sponsor**: [https://github.com/sponsors/jakeleekr13-otter](https://github.com/sponsors/jakeleekr13-otter)
+- ☕ **Buy Me a Coffee**: [https://buymeacoffee.com/jakeleekr13otter](https://buymeacoffee.com/jakeleekr13otter)
+
+여러분의 후원은 프로젝트를 개선하고 유지 관리하는 데 큰 도움이 됩니다.
 
 ---
 

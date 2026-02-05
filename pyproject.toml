@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qr-in-out"
+version = "1.0.0"
+description = "QR Code-Based Checkpoint Access Management System"
+readme = "README.md"
+authors = [
+    {name = "Jake Lee", email = "jakeleekr13@gmail.com"},
+]
+license = {text = "MIT"}
+keywords = ["qr-code", "checkpoint", "access-management", "streamlit", "attendance"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: System Administrators",
+    "Topic :: Office/Business",
+    "Topic :: Security",
+    "Framework :: Streamlit",
+]
+requires-python = ">=3.9"
+dependencies = [
+    "streamlit>=1.30.0",
+    "qrcode[pil]>=7.4.0",
+    "Pillow>=10.0.0",
+    "pyzbar>=0.1.9",
+    "bcrypt>=4.1.0",
+    "python-dotenv>=1.0.0",
+    "pytz>=2024.1",
+    "requests>=2.31.0",
+    "pandas>=2.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "playwright>=1.40.0",
+    "pytest>=7.0.0",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/jakeleekr13-otter/qr_in_out"
+"Bug Tracker" = "https://github.com/jakeleekr13-otter/qr_in_out/issues"
+"Documentation" = "https://github.com/jakeleekr13-otter/qr_in_out#readme"
+"Changelog" = "https://github.com/jakeleekr13-otter/qr_in_out/releases"
+
+[tool.setuptools.packages.find]
+where = ["."]
+exclude = ["tests*", "docs*", "assets*", "scripts*", "data*"]
+
+[tool.setuptools.package-data]
+"*" = [".env.example"]
