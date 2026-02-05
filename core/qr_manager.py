@@ -2,6 +2,7 @@ import qrcode
 import json
 import hmac
 import hashlib
+import os
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Tuple, Any
 from PIL import Image
@@ -9,7 +10,28 @@ import io
 import base64
 
 class QRManager:
-    SECRET_KEY = "qr-in-out-secret-key"  # In production, load from environment variable
+    @staticmethod
+    def _get_secret_key() -> str:
+        """
+        Get SECRET_KEY from environment variable.
+        Raises ValueError if not set or too short.
+        """
+        secret_key = os.getenv("QR_SECRET_KEY")
+
+        if not secret_key:
+            raise ValueError(
+                "QR_SECRET_KEY environment variable not set! "
+                "Please set it in .env file or environment. "
+                "Generate a secure key with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+
+        if len(secret_key) < 32:
+            raise ValueError(
+                f"QR_SECRET_KEY must be at least 32 characters (current: {len(secret_key)}). "
+                "Generate a secure key with: python -c \"import secrets; print(secrets.token_hex(32))\""
+            )
+
+        return secret_key
 
     @staticmethod
     def generate_static_qr_content(checkpoint_id: str) -> str:
@@ -47,8 +69,9 @@ class QRManager:
     def _generate_signature(content: Dict[str, Any]) -> str:
         # Create a canonical string representation excluding the signature itself
         data_to_sign = f"{content['checkpoint_id']}|{content['sequence']}|{content['issued_at']}"
+        secret_key = QRManager._get_secret_key()
         return hmac.new(
-            QRManager.SECRET_KEY.encode(),
+            secret_key.encode(),
             data_to_sign.encode(),
             hashlib.sha256
         ).hexdigest()

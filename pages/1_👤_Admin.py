@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import secrets
 from datetime import datetime, time, timedelta, date
 import pytz
 import time as time_module
@@ -10,6 +11,10 @@ from core.time_service import TimeService
 from utils.helpers import (
     get_checkpoint_name, get_guest_name, get_guest_email,
     is_valid_email, checkpoint_name_exists, guest_email_exists
+)
+from config.default_credentials import (
+    DEFAULT_USERNAME, DEFAULT_PASSWORD, SECURITY_QUESTIONS,
+    MAX_LOGIN_ATTEMPTS, LOCKOUT_DURATION_MINUTES
 )
 
 # Initialize storage
@@ -23,6 +28,12 @@ if "admin_authenticated" not in st.session_state:
     st.session_state.admin_authenticated = False
 if "force_setup" not in st.session_state:
     st.session_state.force_setup = False
+if "login_attempts" not in st.session_state:
+    st.session_state.login_attempts = 0
+if "login_locked_until" not in st.session_state:
+    st.session_state.login_locked_until = None
+if "recovery_mode" not in st.session_state:
+    st.session_state.recovery_mode = False
 
 # Check for existing admin account
 admin_creds = storage.get_admin_credentials()
@@ -32,95 +43,264 @@ admin_creds = storage.get_admin_credentials()
 if not st.session_state.admin_authenticated:
     # LOGIN MODE
     st.title("👤 Admin Login")
-    
-    # First time / Reset scenario
-    if not admin_creds:
-        st.info("ℹ️ System Not Configured. Please log in with default credentials.")
-        st.caption("Default Username: **admin** | Default Password: **admin**")
-    
-    with st.form("admin_login_form"):
-        username_input = st.text_input("Username")
-        password_input = st.text_input("Password", type="password")
-        
-        login_submitted = st.form_submit_button("Log In", type="primary")
-        
-        if login_submitted:
-            # Scenario A: First Run (No stored creds) - Check hardcoded defaults
-            if not admin_creds:
-                if username_input == "admin" and password_input == "admin":
-                    st.session_state.admin_authenticated = True
-                    st.session_state.force_setup = True
-                    st.success("✅ Default login successful. Please set up your secure account.")
-                    time_module.sleep(0.5)
-                    st.rerun()
+
+    # Check if account is locked
+    if st.session_state.login_locked_until:
+        if datetime.now() < st.session_state.login_locked_until:
+            remaining = int((st.session_state.login_locked_until - datetime.now()).total_seconds())
+            minutes, seconds = divmod(remaining, 60)
+            st.error(f"🔒 Account locked due to multiple failed login attempts.\n\nTry again in {minutes}m {seconds}s")
+
+            # Auto-refresh countdown
+            time_module.sleep(1)
+            st.rerun()
+        else:
+            # Unlock account
+            st.session_state.login_locked_until = None
+            st.session_state.login_attempts = 0
+            st.rerun()
+
+    # Recovery Mode
+    elif st.session_state.recovery_mode and admin_creds:
+        st.title("🔑 Account Recovery")
+
+        # Check if recovery options exist
+        has_recovery_question = admin_creds.get("recovery_question")
+        has_recovery_code = admin_creds.get("recovery_code_hash")
+
+        if not has_recovery_question and not has_recovery_code:
+            st.error("❌ No recovery options configured for this account.")
+            st.warning("Recovery requires server access. Please delete `data/admin_credentials.json` and restart.")
+            if st.button("← Back to Login"):
+                st.session_state.recovery_mode = False
+                st.rerun()
+        else:
+            recovery_method = st.radio("Choose recovery method:",
+                                      ["Security Question" if has_recovery_question else None,
+                                       "Recovery Code" if has_recovery_code else None],
+                                      index=0)
+
+            if recovery_method == "Security Question" and has_recovery_question:
+                st.info(f"**Question:** {admin_creds['recovery_question']}")
+
+                with st.form("recovery_question_form"):
+                    recovery_answer = st.text_input("Your Answer", type="password")
+                    new_password = st.text_input("New Password (min 8 characters)", type="password")
+                    confirm_password = st.text_input("Confirm New Password", type="password")
+
+                    if st.form_submit_button("Reset Password", type="primary"):
+                        if AuthManager.verify_password(recovery_answer.lower().strip(),
+                                                      admin_creds['recovery_answer_hash']):
+                            if len(new_password) < 8:
+                                st.error("❌ Password must be at least 8 characters")
+                            elif new_password != confirm_password:
+                                st.error("❌ Passwords do not match")
+                            else:
+                                # Reset password
+                                admin_creds['password_hash'] = AuthManager.hash_password(new_password)
+                                storage.save_admin_credentials(admin_creds)
+
+                                st.session_state.recovery_mode = False
+                                st.session_state.login_attempts = 0
+                                st.session_state.login_locked_until = None
+
+                                st.success("✅ Password reset successful! Please log in with your new password.")
+                                time_module.sleep(2)
+                                st.rerun()
+                        else:
+                            st.error("❌ Incorrect security answer")
+
+            elif recovery_method == "Recovery Code" and has_recovery_code:
+                st.info("Enter the recovery code that was provided during account setup.")
+
+                with st.form("recovery_code_form"):
+                    recovery_code = st.text_input("Recovery Code (32 characters)", type="password")
+                    new_password = st.text_input("New Password (min 8 characters)", type="password")
+                    confirm_password = st.text_input("Confirm New Password", type="password")
+
+                    if st.form_submit_button("Reset Password", type="primary"):
+                        if AuthManager.verify_password(recovery_code.strip(),
+                                                      admin_creds['recovery_code_hash']):
+                            if len(new_password) < 8:
+                                st.error("❌ Password must be at least 8 characters")
+                            elif new_password != confirm_password:
+                                st.error("❌ Passwords do not match")
+                            else:
+                                # Reset password
+                                admin_creds['password_hash'] = AuthManager.hash_password(new_password)
+                                storage.save_admin_credentials(admin_creds)
+
+                                st.session_state.recovery_mode = False
+                                st.session_state.login_attempts = 0
+                                st.session_state.login_locked_until = None
+
+                                st.success("✅ Password reset successful! Please log in with your new password.")
+                                time_module.sleep(2)
+                                st.rerun()
+                        else:
+                            st.error("❌ Incorrect recovery code")
+
+            if st.button("← Back to Login"):
+                st.session_state.recovery_mode = False
+                st.rerun()
+
+    # Normal Login Mode
+    else:
+        # First time / Reset scenario
+        if not admin_creds:
+            st.info("ℹ️ System Not Configured. Please log in with default credentials.")
+            st.caption(f"Default Username: **{DEFAULT_USERNAME}** | Default Password: **{DEFAULT_PASSWORD}**")
+
+        with st.form("admin_login_form"):
+            username_input = st.text_input("Username")
+            password_input = st.text_input("Password", type="password")
+
+            login_submitted = st.form_submit_button("Log In", type="primary")
+
+            if login_submitted:
+                # Scenario A: First Run (No stored creds) - Check defaults
+                if not admin_creds:
+                    if username_input == DEFAULT_USERNAME and password_input == DEFAULT_PASSWORD:
+                        st.session_state.admin_authenticated = True
+                        st.session_state.force_setup = True
+                        st.session_state.login_attempts = 0
+                        st.success("✅ Default login successful. Please set up your secure account.")
+                        time_module.sleep(0.5)
+                        st.rerun()
+                    else:
+                        st.error(f"❌ Invalid default credentials. Use {DEFAULT_USERNAME}/{DEFAULT_PASSWORD}")
+
+                # Scenario B: Normal Run - Check stored creds
                 else:
-                    st.error("❌ Invalid default credentials.")
-            
-            # Scenario B: Normal Run - Check stored creds
-            else:
-                if username_input == admin_creds["username"] and \
-                   AuthManager.verify_password(password_input, admin_creds["password_hash"]):
-                    st.session_state.admin_authenticated = True
-                    st.session_state.force_setup = False
-                    st.success("✅ Login successful")
-                    time_module.sleep(0.5)
-                    st.rerun()
-                else:
-                    st.error("❌ Invalid username or password")
-    
-    # Recovery Hint
-    if admin_creds:
-        with st.expander("🔑 Forgot Login Details?"):
-            st.warning("""
-            **Account Recovery:**
-            There is no automatic password reset.
-            To reset the system to default (admin/admin), an administrator with server access must verify identity and delete the credentials file manually:
-            
-            `rm data/admin_credentials.json`
-            
-            After deletion, refresh this page to log in with default credentials.
-            """)
+                    if username_input == admin_creds["username"] and \
+                       AuthManager.verify_password(password_input, admin_creds["password_hash"]):
+                        st.session_state.admin_authenticated = True
+                        st.session_state.force_setup = False
+                        st.session_state.login_attempts = 0
+                        st.success("✅ Login successful")
+                        time_module.sleep(0.5)
+                        st.rerun()
+                    else:
+                        # Failed login - increment attempts
+                        st.session_state.login_attempts += 1
+                        remaining = MAX_LOGIN_ATTEMPTS - st.session_state.login_attempts
+
+                        if st.session_state.login_attempts >= MAX_LOGIN_ATTEMPTS:
+                            # Lock account
+                            st.session_state.login_locked_until = datetime.now() + timedelta(minutes=LOCKOUT_DURATION_MINUTES)
+                            st.error(f"🔒 Account locked for {LOCKOUT_DURATION_MINUTES} minutes due to multiple failed attempts")
+                            time_module.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error(f"❌ Invalid username or password ({remaining} attempts remaining)")
+
+        # Recovery Link
+        if admin_creds and not st.session_state.recovery_mode:
+            if st.button("🔑 Forgot Password?"):
+                st.session_state.recovery_mode = True
+                st.rerun()
 
 elif st.session_state.force_setup:
     # FORCE SETUP MODE (Interim step after default login)
     st.title("🛡️ Security Setup")
     st.warning("⚠️ You are using the default account. You MUST create a secure administrator account to proceed.")
-    
+
     with st.form("admin_setup_form"):
-        st.write("### Create New Administrator")
-        new_username = st.text_input("New Username *", placeholder="admin")
-        new_password = st.text_input("New Password *", type="password", help="Minimum 6 characters")
+        st.write("### 👤 Administrator Account")
+        new_username = st.text_input("Username *", placeholder="admin", help="Your administrator username")
+        new_password = st.text_input("Password *", type="password", help="Minimum 8 characters recommended")
         confirm_password = st.text_input("Confirm Password *", type="password")
-        
-        setup_submitted = st.form_submit_button("Save & Login", type="primary")
-        
+
+        st.divider()
+        st.write("### 🔐 Account Recovery Options")
+        st.caption("Set up recovery options in case you forget your password. Both will be configured.")
+
+        # Recovery Question
+        st.write("**Option 1: Security Question**")
+        recovery_question = st.selectbox("Security Question *", SECURITY_QUESTIONS)
+        recovery_answer = st.text_input("Your Answer *", type="password",
+                                       help="Answer will be saved (case-insensitive)")
+
+        # Recovery Code
+        st.write("**Option 2: Recovery Code**")
+        st.caption("A 32-character random code will be generated. **Save it in a safe place!**")
+
+        setup_submitted = st.form_submit_button("Create Account & Continue", type="primary")
+
         if setup_submitted:
             errors = []
+
+            # Validate credentials
             if not new_username:
                 errors.append("Username is required")
-            if not new_password or len(new_password) < 6:
-                errors.append("Password must be at least 6 characters")
+            elif len(new_username) < 3:
+                errors.append("Username must be at least 3 characters")
+
+            if not new_password:
+                errors.append("Password is required")
+            elif len(new_password) < 8:
+                errors.append("Password must be at least 8 characters (recommended)")
+
             if new_password != confirm_password:
                 errors.append("Passwords do not match")
-                
+
+            # Validate recovery options
+            if not recovery_question:
+                errors.append("Security question is required")
+
+            if not recovery_answer:
+                errors.append("Security answer is required")
+            elif len(recovery_answer.strip()) < 2:
+                errors.append("Security answer must be at least 2 characters")
+
             if errors:
-                for e in errors: st.error(f"❌ {e}")
+                for e in errors:
+                    st.error(f"❌ {e}")
             else:
-                # Save Account (This effectively disables default admin/admin login)
+                # Generate recovery code
+                recovery_code = secrets.token_hex(16)  # 32 character hex string
+
+                # Save Account
                 creds = {
                     "username": new_username,
                     "password_hash": AuthManager.hash_password(new_password),
+                    "recovery_question": recovery_question,
+                    "recovery_answer_hash": AuthManager.hash_password(recovery_answer.lower().strip()),
+                    "recovery_code_hash": AuthManager.hash_password(recovery_code),
                     "created_at": datetime.now().isoformat()
                 }
                 storage.save_admin_credentials(creds)
-                
+
                 # Exit setup mode
                 st.session_state.force_setup = False
-                
+                st.session_state.admin_authenticated = False  # Force re-login
+
                 st.balloons()
-                st.success("✅ Administrator account secured! Entering dashboard...")
-                time_module.sleep(1)
-                st.rerun()
+                st.success("✅ Administrator account created successfully!")
+
+                # Display recovery code
+                st.warning(f"""
+### 🔑 IMPORTANT: Save Your Recovery Code
+
+**Recovery Code:** `{recovery_code}`
+
+**⚠️ Copy this code and save it in a safe place!**
+
+This code can be used to reset your password if you forget it.
+You will NOT see this code again.
+
+---
+
+**Recovery Options Available:**
+- Security Question: {recovery_question}
+- Recovery Code: (saved above)
+                """)
+
+                st.info("Click the button below to return to login and sign in with your new credentials.")
+
+                if st.button("← Return to Login", type="primary"):
+                    st.session_state.force_setup = False
+                    st.rerun()
 
 else:
     # DASHBOARD MODE (Authenticated & Configured)

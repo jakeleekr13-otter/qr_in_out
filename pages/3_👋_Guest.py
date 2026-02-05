@@ -77,13 +77,19 @@ st.markdown("""
 # --- Helper Functions ---
 
 def verify_guest(name: str, email: str):
-    """Verify guest credentials case-insensitively."""
+    """
+    Verify guest credentials case-insensitively.
+    Returns None if guest not found or has been deleted.
+    """
     name_clean = name.strip().lower()
     email_clean = email.strip().lower()
-    
-    guests = storage.get_active_guests()
+
+    guests = storage.get_active_guests()  # Already filters out deleted guests
     for g in guests:
         if g["name"].strip().lower() == name_clean and g["email"].strip().lower() == email_clean:
+            # Double-check that guest is not deleted (defensive programming)
+            if g.get("deleted_at") is not None:
+                return None  # Guest has been deleted
             return g
     return None
 
@@ -189,7 +195,7 @@ if not st.session_state.guest_authenticated:
                     time_module.sleep(1)
                     st.rerun()
                 else:
-                    st.error("Guest not found. Please check your credentials.")
+                    st.error("Authentication failed: Guest not found, credentials incorrect, or account has been deactivated.")
 
 else:
     # Authenticated View
