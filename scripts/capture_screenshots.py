@@ -100,6 +100,7 @@ def seed_data():
     }
 
     # Checkpoints (first one = static for stable Host screenshot)
+    # v1.2: Added wifi_ssid and wifi_password fields
     cp_pw = hash_password(HOST_PASSWORD)
     checkpoints = [
         {
@@ -111,6 +112,8 @@ def seed_data():
             "admin_password_hash": cp_pw,
             "allowed_guests": ["guest-sarah", "guest-john", "guest-alex"],
             "current_qr_sequence": 0,
+            "wifi_ssid": "Office-Guest-WiFi",
+            "wifi_password": "Welcome2024!",
             "created_at": (now - timedelta(days=10)).isoformat(),
             "updated_at": now.isoformat(),
             "deleted_at": None,
@@ -124,6 +127,8 @@ def seed_data():
             "admin_password_hash": cp_pw,
             "allowed_guests": ["guest-sarah", "guest-john"],
             "current_qr_sequence": 5,
+            "wifi_ssid": "ConferenceRoom-5G",
+            "wifi_password": "MeetingPass123",
             "created_at": (now - timedelta(days=7)).isoformat(),
             "updated_at": now.isoformat(),
             "deleted_at": None,
@@ -137,6 +142,8 @@ def seed_data():
             "admin_password_hash": cp_pw,
             "allowed_guests": ["guest-sarah", "guest-john", "guest-alex"],
             "current_qr_sequence": 0,
+            "wifi_ssid": None,
+            "wifi_password": None,
             "created_at": (now - timedelta(days=5)).isoformat(),
             "updated_at": now.isoformat(),
             "deleted_at": None,
@@ -400,15 +407,16 @@ def capture_all(process):
             screenshot(page, "07_host_login")
 
             # ── 8. Host QR Display ───────────────────────────────────
-            print("[8/11] Host QR Display")
+            # v1.2: Now includes WiFi info and connection status
+            print("[8/11] Host QR Display (with WiFi info & Connection Status)")
             # First checkpoint (Main Entrance Lobby, static) is pre-selected
             page.locator('input[aria-label="Admin Password"]').fill(HOST_PASSWORD)
             page.get_by_role("button", name="Start Display").click()
             # Host page calls TimeService (external API, up to ~12s) then renders QR
             wait_for_element(page, "Static Mode", timeout=25000)
-            settle(page, 1)
-            # Use taller viewport to fit header + status + QR in one frame
-            page.set_viewport_size({"width": 1280, "height": 1200})
+            settle(page, 2)
+            # Use taller viewport to fit header + connection status + QR + WiFi info
+            page.set_viewport_size({"width": 1280, "height": 1400})
             time.sleep(0.5)
             screenshot(page, "08_host_qr_display")
             page.set_viewport_size({"width": 1280, "height": 800})

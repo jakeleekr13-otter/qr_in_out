@@ -108,6 +108,12 @@ if "host_authenticated" not in st.session_state:
     st.session_state.host_authenticated = False
     st.session_state.selected_checkpoint_id = None
 
+# QR Display Options state
+if "qr_display_mode" not in st.session_state:
+    st.session_state.qr_display_mode = "default"
+if "qr_size" not in st.session_state:
+    st.session_state.qr_size = "large"
+
 # --- UI: Unauthenticated State ---
 if not st.session_state.host_authenticated:
     st.title("🖥️ Host Page")
@@ -187,11 +193,46 @@ else:
             st.write(f"⏰ {current_time_display.strftime('%Y-%m-%d %H:%M:%S')}")
             
     st.divider()
-    
-    # Show precise sync status below divider or in a simplified way
-    # TimeService.show_time_sync_status(is_synced, synced_time) 
-    # Moving this to bottom or making it less intrusive if causing layout issues?
-    # Let's keep it but ensure it doesn't overlap.
+
+    # QR Display Options
+    with st.expander("🎨 QR Display Options", expanded=False):
+        opt_col1, opt_col2 = st.columns(2)
+
+        with opt_col1:
+            mode_options = list(QRManager.QR_DISPLAY_MODES.keys())
+            mode_labels = [QRManager.QR_DISPLAY_MODES[m]["name"] for m in mode_options]
+            selected_mode_idx = mode_options.index(st.session_state.qr_display_mode)
+
+            new_mode = st.selectbox(
+                "Display Mode",
+                options=mode_options,
+                format_func=lambda x: QRManager.QR_DISPLAY_MODES[x]["name"],
+                index=selected_mode_idx,
+                key="mode_selector"
+            )
+            if new_mode != st.session_state.qr_display_mode:
+                st.session_state.qr_display_mode = new_mode
+                st.rerun()
+
+        with opt_col2:
+            size_options = list(QRManager.QR_SIZES.keys())
+            selected_size_idx = size_options.index(st.session_state.qr_size)
+
+            new_size = st.selectbox(
+                "QR Size",
+                options=size_options,
+                format_func=lambda x: QRManager.QR_SIZES[x]["label"],
+                index=selected_size_idx,
+                key="size_selector"
+            )
+            if new_size != st.session_state.qr_size:
+                st.session_state.qr_size = new_size
+                st.rerun()
+
+        # Preview current settings
+        current_mode = QRManager.QR_DISPLAY_MODES[st.session_state.qr_display_mode]
+        current_size = QRManager.QR_SIZES[st.session_state.qr_size]
+        st.caption(f"Current: {current_mode['name']} / {current_size['label']}")
 
     # 4. Display Content
     if not is_allowed:
@@ -211,10 +252,20 @@ else:
         if qr_mode == "static":
             # Static QR
             qr_content = QRManager.generate_static_qr_content(
-                checkpoint["id"], 
+                checkpoint["id"],
                 sequence=checkpoint.get("current_qr_sequence", 0)
             )
-            qr_img = QRManager.generate_qr_image(qr_content, box_size=15)
+
+            # Get display options
+            display_mode = QRManager.QR_DISPLAY_MODES[st.session_state.qr_display_mode]
+            size_config = QRManager.QR_SIZES[st.session_state.qr_size]
+
+            qr_img = QRManager.generate_qr_image(
+                qr_content,
+                box_size=size_config["box_size"],
+                fill_color=display_mode["fill_color"],
+                back_color=display_mode["back_color"]
+            )
             
             # Convert to bytes for display/download
             img_bytes = io.BytesIO()
@@ -269,13 +320,22 @@ else:
             qr_raw_content = QRManager.generate_dynamic_qr_content(
                 checkpoint_id=checkpoint["id"],
                 current_sequence=checkpoint["current_qr_sequence"],
-                issued_at=st.session_state.last_refresh_time, 
+                issued_at=st.session_state.last_refresh_time,
                 expires_at=st.session_state.next_refresh_time,
                 refresh_interval=refresh_interval
             )
             seq = checkpoint["current_qr_sequence"]
-            
-            qr_img = QRManager.generate_qr_image(qr_raw_content, box_size=15)
+
+            # Get display options
+            display_mode = QRManager.QR_DISPLAY_MODES[st.session_state.qr_display_mode]
+            size_config = QRManager.QR_SIZES[st.session_state.qr_size]
+
+            qr_img = QRManager.generate_qr_image(
+                qr_raw_content,
+                box_size=size_config["box_size"],
+                fill_color=display_mode["fill_color"],
+                back_color=display_mode["back_color"]
+            )
             img_bytes = io.BytesIO()
             qr_img.save(img_bytes, format='PNG')
             img_bytes = img_bytes.getvalue()

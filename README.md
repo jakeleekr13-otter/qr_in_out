@@ -418,13 +418,17 @@ QR In/Out supports various network deployment scenarios depending on your organi
 **Secure remote access for distributed locations**
 
 ```
-[Headquarters]────[VPN Server]────[Remote Office]
-      │                                  │
-[Streamlit Server]              [Host Device]
+[HQ Network]─────────[VPN Server]─────────[Remote Office Network]
+      │                                            │
+[Streamlit Server]                        [Host Device + Guests]
+192.168.1.100:8501                          (VPN Clients)
 ```
 
 - **Use Case**: Corporate networks, high-security environments
 - **Setup**: Connect remote sites via VPN tunnel
+- **Guest Access**: After VPN connection, `http://192.168.1.100:8501` (internal IP)
+
+**Note**: In this scenario, guests also need VPN client access. For external visitors (no VPN), use Scenario 2 (Cloud Deployment) instead.
 
 ### Firewall Configuration
 
@@ -433,6 +437,7 @@ QR In/Out supports various network deployment scenarios depending on your organi
 | 8501 | TCP | Inbound | Streamlit default port |
 | 443 | TCP | Outbound | World Time API (HTTPS) |
 | 80 | TCP | Outbound | World Time API (HTTP fallback) |
+| 53 | UDP/TCP | Outbound | DNS (domain name resolution) |
 
 ### HTTPS Configuration
 

@@ -88,8 +88,23 @@ class QRManager:
             hashlib.sha256
         ).hexdigest()
 
+    # High Contrast QR Display Options
+    QR_DISPLAY_MODES = {
+        "default": {"name": "기본 (Default)", "fill_color": "black", "back_color": "white"},
+        "high_contrast": {"name": "고대비 (High Contrast)", "fill_color": "#000000", "back_color": "#FFFF00"},
+        "inverted": {"name": "반전 (Inverted)", "fill_color": "white", "back_color": "black"}
+    }
+
+    QR_SIZES = {
+        "small": {"box_size": 8, "label": "소 (S)"},
+        "medium": {"box_size": 12, "label": "중 (M)"},
+        "large": {"box_size": 16, "label": "대 (L)"},
+        "xlarge": {"box_size": 20, "label": "특대 (XL)"}
+    }
+
     @staticmethod
-    def generate_qr_image(content: str, box_size: int = 10) -> Image:
+    def generate_qr_image(content: str, box_size: int = 10,
+                          fill_color: str = "black", back_color: str = "white") -> Image:
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
@@ -98,7 +113,7 @@ class QRManager:
         )
         qr.add_data(content)
         qr.make(fit=True)
-        return qr.make_image(fill_color="black", back_color="white")
+        return qr.make_image(fill_color=fill_color, back_color=back_color)
 
     @staticmethod
     def parse_qr_content(qr_string: str) -> Optional[Dict]:
