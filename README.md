@@ -51,6 +51,14 @@
   - Time synchronization via World Time API to prevent local time manipulation
   - Soft delete mechanism to preserve data history
 
+- **Enhanced User Experience (v1.2)**
+  - **WiFi Info Display**: Show network SSID/password on Host screen for guest convenience
+  - **Connection Status Monitoring**: Real-time server and time API status with visual indicators
+  - **Sound Feedback**: Audio confirmation for successful/failed scans (Web Audio API)
+  - **Remember Me**: Save guest credentials locally via browser localStorage
+  - **Kiosk Mode**: Continuous scanning mode for shared devices at checkpoints
+  - **High Contrast QR**: Multiple display modes (default, high contrast, inverted) for various lighting conditions
+
 - **Local Data Storage**
   - JSON-based storage (no external database required)
   - Thread-safe concurrent access
@@ -219,6 +227,64 @@ The application will open at `http://localhost:8501`
 
 ---
 
+## New Features in v1.2
+
+### WiFi Information Display (Host)
+
+When creating a checkpoint, optionally configure WiFi credentials. The Host page will display these for guest convenience:
+
+- **WiFi SSID**: Network name guests should connect to
+- **WiFi Password**: Network password
+
+This is particularly useful when guests need to join a specific network to access the QR scanning page.
+
+### Connection Status Monitoring
+
+Both Host and Guest pages now display real-time connection status:
+
+| Status | Icon | Description |
+|--------|------|-------------|
+| All Connected | ✅ | Server and Time API both reachable |
+| Partial | ⚠️ | Server connected, Time API unreachable (using local time) |
+| Disconnected | ❌ | Cannot reach server |
+
+### Sound Feedback (Guest)
+
+Audio feedback plays automatically on scan results:
+- **Success**: Confirmation sound on successful check-in/out
+- **Error**: Alert sound on failed scan
+
+Uses Web Audio API with HTML5 Audio fallback for broad browser support.
+
+### Remember Me (Guest)
+
+Enable "Remember Me" on the Guest login page to save credentials locally:
+- Uses browser localStorage (never sent to server)
+- Persists across sessions
+- Clear with "Forget Me" button
+
+### Kiosk Mode (Guest)
+
+For shared devices at checkpoint locations:
+- Enable "Kiosk Mode" checkbox after login
+- Continuous scanning without re-authentication
+- 5-minute timeout for security
+- No access to personal visit history
+
+### High Contrast QR Display (Host)
+
+Choose QR display mode based on environment:
+
+| Mode | Fill Color | Background | Best For |
+|------|-----------|------------|----------|
+| Default | Black | White | Standard lighting |
+| High Contrast | Black | Yellow | Bright environments |
+| Inverted | White | Black | Dark environments |
+
+Size options: Small (8), Medium (12), Large (16), X-Large (20)
+
+---
+
 ## Usage Examples
 
 ### Scenario 1: Office Building Access
@@ -284,7 +350,8 @@ qr_in_out/
 │   ├── auth.py             # Authentication and password hashing
 │   ├── qr_manager.py       # QR generation, validation, signatures
 │   ├── time_service.py     # Time synchronization via World Time API
-│   └── time_validator.py   # Time-based access control validation
+│   ├── time_validator.py   # Time-based access control validation
+│   └── connection_health.py # Connection status monitoring (v1.2)
 ├── utils/
 │   └── helpers.py          # Utility functions (email validation, lookups)
 ├── data/                   # JSON storage files (auto-created)
@@ -292,6 +359,10 @@ qr_in_out/
 │   ├── guests.json
 │   ├── activity_logs.json
 │   └── admin_settings.json
+├── assets/
+│   └── sounds/             # Audio feedback files (v1.2)
+│       ├── success.mp3
+│       └── error.mp3
 ├── docs/                   # Documentation and planning artifacts
 │   └── planning-artifacts/
 │       ├── PRD-Overview.md
@@ -300,6 +371,95 @@ qr_in_out/
 │       └── PRD-Guest.md
 ├── requirements.txt        # Python dependencies
 └── README.md              # This file
+```
+
+---
+
+## Network Architecture
+
+QR In/Out supports various network deployment scenarios depending on your organization's needs.
+
+### Deployment Scenarios
+
+#### Scenario 1: LAN (Same Network)
+**All devices on the same local network**
+
+```
+[Streamlit Server: 192.168.1.100:8501]
+         │
+    [Local Router]
+    ┌────┴────┐
+    │         │
+[Host]    [Guest Mobile]
+```
+
+- **Use Case**: Single office, event venue
+- **Setup**: All devices connect to the same WiFi
+- **Guest Access**: `http://192.168.1.100:8501`
+
+#### Scenario 2: Cloud Deployment
+**Server accessible from anywhere**
+
+```
+[Internet]
+    │
+[Cloud Server with Public IP]
+    │
+[Reverse Proxy (nginx/Caddy)]
+    │
+[Streamlit: localhost:8501]
+```
+
+- **Use Case**: Multi-site facilities, remote checkpoints
+- **Setup**: Deploy to cloud provider (AWS, GCP, Azure, etc.)
+- **Guest Access**: `https://yourdomain.com`
+
+#### Scenario 3: VPN/Remote Access
+**Secure remote access for distributed locations**
+
+```
+[Headquarters]────[VPN Server]────[Remote Office]
+      │                                  │
+[Streamlit Server]              [Host Device]
+```
+
+- **Use Case**: Corporate networks, high-security environments
+- **Setup**: Connect remote sites via VPN tunnel
+
+### Firewall Configuration
+
+| Port | Protocol | Direction | Description |
+|------|----------|-----------|-------------|
+| 8501 | TCP | Inbound | Streamlit default port |
+| 443 | TCP | Outbound | World Time API (HTTPS) |
+| 80 | TCP | Outbound | World Time API (HTTP fallback) |
+
+### HTTPS Configuration
+
+For production deployments, we recommend using HTTPS:
+
+**Option 1: Reverse Proxy (Recommended)**
+```nginx
+# nginx configuration
+server {
+    listen 443 ssl;
+    server_name yourdomain.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://localhost:8501;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+**Option 2: Streamlit Built-in SSL**
+```bash
+streamlit run app.py --server.sslCertFile=cert.pem --server.sslKeyFile=key.pem
 ```
 
 ---
@@ -377,6 +537,8 @@ STREAMLIT_SERVER_PORT=8501
   "admin_password_hash": "hashed_password",
   "allowed_guests": ["guest_id_1", "guest_id_2"],
   "current_qr_sequence": 0,
+  "wifi_ssid": "Office-Guest-WiFi",      # (v1.2) WiFi network name for Host display
+  "wifi_password": "guest1234",           # (v1.2) WiFi password for Host display
   "deleted_at": null,
   "created_at": "2026-02-05T10:00:00Z",
   "updated_at": "2026-02-05T10:00:00Z"
@@ -562,6 +724,13 @@ streamlit run app.py
 ### Planned Features
 
 - [x] **Enhanced Security**: bcrypt password hashing (completed in v1.0)
+- [x] **Network Architecture Documentation**: Deployment guides and firewall settings (completed in v1.2)
+- [x] **WiFi Info Display**: Show network credentials on Host screen (completed in v1.2)
+- [x] **Connection Status Monitoring**: Real-time server and API status (completed in v1.2)
+- [x] **Sound Feedback**: Audio confirmation for scan results (completed in v1.2)
+- [x] **Remember Me**: Save guest credentials locally (completed in v1.2)
+- [x] **Kiosk Mode**: Continuous scanning for shared devices (completed in v1.2)
+- [x] **High Contrast QR**: Multiple display modes for accessibility (completed in v1.2)
 - [ ] **Multi-Language Support**: Internationalization (i18n)
 - [ ] **Database Backend**: PostgreSQL/MySQL option for larger deployments
 - [ ] **Email Notifications**: Alert guests on check-in/out

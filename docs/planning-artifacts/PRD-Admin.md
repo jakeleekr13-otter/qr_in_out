@@ -1,9 +1,9 @@
 ---
 document_type: "Product Requirements Document - Admin Page"
 project: "QR In/Out"
-version: "1.1"
+version: "1.2"
 author: "Jake"
-date: "2026-02-05"
+date: "2026-02-08"
 status: "Active"
 language: "Korean"
 purpose: "관리자 페이지 상세 기능 명세"
@@ -82,6 +82,10 @@ So that I can control access to a specific location.
 │  관리 비밀번호 * : [••••••••]           │
 │  비밀번호 확인   : [••••••••]           │
 │                                         │
+│  📶 WiFi 정보 (선택, Host 화면에 표시): │
+│  WiFi SSID     : [Guest_Network____]    │
+│  WiFi Password : [welcome2024______]    │
+│                                         │
 │  허용 방문객 (다중 선택):               │
 │  □ 홍길동 (hong@example.com)            │
 │  □ 김철수 (kim@example.com)             │
@@ -102,6 +106,8 @@ So that I can control access to a specific location.
 | QR 방식 | radio | ✅ | static/dynamic | dynamic |
 | 비밀번호 | password | ✅ | 최소 4자 | - |
 | 비밀번호 확인 | password | ✅ | 일치 확인 | - |
+| WiFi SSID | text | ❌ | 길이 0-50 | "" |
+| WiFi Password | text | ❌ | 길이 0-100 | "" |
 | 허용 방문객 | multiselect | ❌ | 0개 이상 | [] |
 
 **Streamlit Code**:
@@ -132,6 +138,22 @@ with st.form("create_checkpoint"):
         admin_password = st.text_input("관리 비밀번호 *", type="password")
     with col2:
         password_confirm = st.text_input("비밀번호 확인 *", type="password")
+
+    # WiFi Information (optional, displayed on Host screen)
+    st.write("**📶 WiFi 정보** (선택, Host 화면에 표시됩니다)")
+    col1, col2 = st.columns(2)
+    with col1:
+        wifi_ssid = st.text_input(
+            "WiFi SSID",
+            placeholder="Guest_Network",
+            help="게스트가 연결할 WiFi 네트워크 이름"
+        )
+    with col2:
+        wifi_password = st.text_input(
+            "WiFi Password",
+            placeholder="welcome2024",
+            help="WiFi 비밀번호 (없으면 비워두세요)"
+        )
 
     # Load active guests only
     guests = storage.get_active_guests()
@@ -176,7 +198,9 @@ with st.form("create_checkpoint"):
                 ),
                 qr_mode=qr_mode,
                 admin_password=admin_password,
-                allowed_guests=allowed_guests
+                allowed_guests=allowed_guests,
+                wifi_ssid=wifi_ssid if wifi_ssid else None,
+                wifi_password=wifi_password if wifi_password else None
             )
 
             storage.add("checkpoints", checkpoint.to_dict())
@@ -239,6 +263,11 @@ else:
             location = st.text_input("위치", value=checkpoint["location"])
 
             # ... (나머지 필드는 생성 폼과 동일, pre-filled)
+            
+            st.divider()
+            st.subheader("🛡️ QR Security")
+            st.write(f"Current QR Version: **#{checkpoint.get('current_qr_sequence', 0)}**")
+            reissue_qr = st.checkbox("Reissue QR Code", help="시퀀스 번호를 증가시켜 이전 버전의 모든 QR 코드를 즉시 무효화합니다.")
 
             submitted = st.form_submit_button("수정", type="primary")
 
@@ -250,6 +279,9 @@ else:
                     "location": location,
                     # ... (other fields)
                 }
+                if reissue_qr:
+                    updates["current_qr_sequence"] = checkpoint.get("current_qr_sequence", 0) + 1
+                    
                 storage.update("checkpoints", selected_id, updates)
                 st.success(f"✅ 체크포인트가 수정되었습니다!")
                 time.sleep(2)
@@ -802,6 +834,8 @@ Admin Page Layout:
 - [ ] 삭제: 이중 확인, _removed suffix
 - [ ] 중복 이름 방지
 - [ ] 허용 방문객 0개 경고
+- [ ] WiFi SSID/Password 입력 (선택사항)
+- [ ] WiFi 정보 저장 및 Host 화면 표시 확인
 
 #### 방문객 관리
 - [ ] 등록: 이름+이메일 필수, 성공 메시지
@@ -830,11 +864,14 @@ Admin Page Layout:
 
 - **문서 타입**: PRD - Admin Page
 - **프로젝트**: QR In/Out
-- **버전**: 1.1
+- **버전**: 1.2
 - **작성자**: Jake
-- **작성일**: 2026-02-05
+- **작성일**: 2026-02-08
 - **언어**: 한국어
 - **상태**: Active
+- **변경 이력**:
+  - v1.2 (2026-02-08): 체크포인트 WiFi 정보 필드 추가
+  - v1.1 (2026-02-05): 초기 버전
 - **관련 문서**:
   - [PRD-Overview.md](PRD-Overview.md) - 시스템 개요
   - [PRD-Host.md](PRD-Host.md) - 호스트 페이지

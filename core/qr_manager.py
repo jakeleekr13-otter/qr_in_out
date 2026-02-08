@@ -34,14 +34,20 @@ class QRManager:
         return secret_key
 
     @staticmethod
-    def generate_static_qr_content(checkpoint_id: str) -> str:
+    def generate_static_qr_content(checkpoint_id: str, sequence: int = 0) -> str:
         content = {
             "type": "qr_in_out",
             "version": "1.0",
             "checkpoint_id": checkpoint_id,
             "qr_mode": "static",
+            "sequence": sequence,
             "created_at": datetime.now().isoformat()
         }
+        
+        # Add signature
+        signature = QRManager._generate_signature(content)
+        content["signature"] = signature
+        
         return json.dumps(content)
 
     @staticmethod
@@ -68,7 +74,13 @@ class QRManager:
     @staticmethod
     def _generate_signature(content: Dict[str, Any]) -> str:
         # Create a canonical string representation excluding the signature itself
-        data_to_sign = f"{content['checkpoint_id']}|{content['sequence']}|{content['issued_at']}"
+        qr_mode = content.get("qr_mode", "unknown")
+        if qr_mode == "dynamic":
+            data_to_sign = f"{content['checkpoint_id']}|{content['sequence']}|{content['issued_at']}"
+        else:
+            # For static or unknown, use 'static' flag instead of timestamp
+            data_to_sign = f"{content['checkpoint_id']}|{content['sequence']}|static"
+            
         secret_key = QRManager._get_secret_key()
         return hmac.new(
             secret_key.encode(),

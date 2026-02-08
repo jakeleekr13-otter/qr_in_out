@@ -1,9 +1,9 @@
 ---
 document_type: "Product Requirements Document - Guest Page"
 project: "QR In/Out"
-version: "1.1"
+version: "1.2"
 author: "Jake"
-date: "2026-02-05"
+date: "2026-02-08"
 status: "Active"
 language: "Korean"
 purpose: "게스트 페이지 상세 기능 명세"
@@ -43,7 +43,10 @@ related_docs:
 | 방문자 인증 | 이름 + 이메일로 인증 | 🔴 필수 |
 | QR 스캔 (카메라) | 실시간 카메라로 QR 스캔 | 🔴 필수 |
 | QR 스캔 (업로드) | 이미지 파일 업로드로 스캔 | 🟡 중요 |
-| 성공/실패 피드백 | 즉시 결과 표시 | 🔴 필수 |
+| 성공/실패 피드백 | 즉시 결과 표시 + 사운드 | 🔴 필수 |
+| 연결 상태 표시 | 서버/Time API 연결 상태 배지 | 🔴 필수 |
+| 정보 기억하기 | 이름/이메일 브라우저 저장 | 🟡 중요 |
+| 빠른 재스캔 모드 | 연속 스캔 (공용 기기용) | 🟢 선택 |
 | 방문 기록 조회 | 본인의 체크인/아웃 기록 | 🔴 필수 |
 | CSV 다운로드 | 본인 기록 다운로드 | 🟢 선택 |
 
@@ -160,8 +163,10 @@ So that I can check in or check out at a checkpoint.
 **UI Layout (Authenticated)**:
 ```
 ┌─────────────────────────────────────────┐
-│ 👋 홍길동님                             │
+│ 👋 홍길동님                  [🚪 로그아웃]│
 │ 🌍 타임존: Asia/Seoul                   │
+├─────────────────────────────────────────┤
+│ 📶 ✅ 연결 정상 (45ms)                  │
 │ ⏰ 2026-02-05 14:30:45 (동기화됨)       │
 ├─────────────────────────────────────────┤
 │                                         │
@@ -181,8 +186,6 @@ So that I can check in or check out at a checkpoint.
 │                                         │
 │ [📁 이미지 파일 업로드]                 │
 │                                         │
-│ [🚪 로그아웃]                           │
-│                                         │
 └─────────────────────────────────────────┘
 ```
 
@@ -197,16 +200,30 @@ if st.session_state.guest_authenticated:
         st.header(f"👋 {guest['name']}님")
         st.caption(f"🌍 타임존: {guest['timezone']}")
 
-        # Get current time
-        from core.time_service import time_service
-        current_time, is_synced = time_service.get_current_time(guest["timezone"])
-        time_service.show_time_sync_status(is_synced, current_time)
-
     with col2:
         if st.button("🚪 로그아웃"):
             st.session_state.guest_authenticated = False
             st.session_state.current_guest = None
             st.rerun()
+
+    st.divider()
+
+    # Connection status
+    from core.connection_health import ConnectionHealthCheck
+    status = ConnectionHealthCheck.get_connection_status()
+
+    if status.server_connected and status.time_api_connected:
+        latency_text = f" ({status.latency_ms}ms)" if status.latency_ms else ""
+        st.success(f"📶 ✅ 연결 정상{latency_text}")
+    elif status.server_connected and not status.time_api_connected:
+        st.warning("📶 ⚠️ 시간 동기화 불가 - 로컬 시간 사용 중")
+    else:
+        st.error("📶 ❌ 서버 연결 끊김 - 네트워크를 확인하세요")
+
+    # Get current time
+    from core.time_service import time_service
+    current_time, is_synced = time_service.get_current_time(guest["timezone"])
+    time_service.show_time_sync_status(is_synced, current_time)
 
     st.divider()
 
@@ -346,18 +363,16 @@ def validate_qr_scan(qr_data, guest, action, current_time, is_time_synced):
     if checkpoint.get("deleted_at"):
         return {"valid": False, "reason": "삭제된 체크포인트입니다"}
 
-    # 3. Verify HMAC signature (for dynamic QR)
-    if qr_data.get("qr_mode") == "dynamic":
-        if not qr_manager.verify_signature(qr_data):
-            return {"valid": False, "reason": "QR 코드 서명이 유효하지 않습니다 (위조 가능성)"}
+    # 3. Verify HMAC signature (모든 QR 공통)
+    if not qr_manager.verify_signature(qr_data):
+        return {"valid": False, "reason": "QR 코드 서명이 유효하지 않습니다 (위조 가능성)"}
 
-    # 4. Check sequence number (for dynamic QR)
-    if qr_data.get("qr_mode") == "dynamic":
-        qr_sequence = qr_data.get("sequence", 0)
-        current_sequence = checkpoint.get("current_qr_sequence", 0)
+    # 4. Check sequence number (모든 QR 공통 - 구버전 무효화용)
+    qr_sequence = qr_data.get("sequence", 0)
+    current_sequence = checkpoint.get("current_qr_sequence", 0)
 
-        if qr_sequence < current_sequence:
-            return {"valid": False, "reason": f"만료된 QR 코드입니다 (이전 버전). 최신 QR 코드를 스캔하세요."}
+    if qr_sequence < current_sequence:
+        return {"valid": False, "reason": f"만료된 QR 코드입니다 (이전 버전). 최신 QR 코드를 스캔하세요."}
 
     # 5. Check time expiration (for dynamic QR)
     if qr_data.get("qr_mode") == "dynamic":
@@ -423,7 +438,501 @@ def get_last_activity(guest_id: str, checkpoint_id: str) -> Optional[Dict]:
 
 ---
 
-### 2.3 방문 기록 조회
+### 2.3 사운드 피드백
+
+**User Story**:
+```
+As a guest,
+I want to hear a sound when I scan successfully or fail,
+So that I get immediate audio feedback without looking at the screen.
+```
+
+**Sound Types**:
+
+| 상태 | 사운드 | 설명 |
+|------|--------|------|
+| 성공 | 🔊 success.mp3 | 밝고 짧은 성공음 (약 0.5초) |
+| 실패 | 🔊 error.mp3 | 낮고 짧은 경고음 (약 0.5초) |
+
+**Implementation**:
+```python
+import streamlit.components.v1 as components
+
+def play_sound(sound_type: str):
+    """
+    Play sound feedback using HTML5 Audio
+    sound_type: "success" or "error"
+    """
+    sound_files = {
+        "success": "assets/sounds/success.mp3",
+        "error": "assets/sounds/error.mp3"
+    }
+
+    sound_file = sound_files.get(sound_type, sound_files["error"])
+
+    # Use HTML5 Audio for cross-browser compatibility
+    components.html(f"""
+        <audio autoplay>
+            <source src="{sound_file}" type="audio/mpeg">
+        </audio>
+    """, height=0)
+
+# Usage in QR scan result
+if validation_result["valid"]:
+    play_sound("success")
+    st.success(f"✅ {action} 성공!")
+    st.balloons()
+else:
+    play_sound("error")
+    st.error(f"❌ {action} 실패: {validation_result['reason']}")
+```
+
+**Alternative: Web Audio API (더 안정적)**:
+```python
+def play_sound_v2(sound_type: str):
+    """
+    Play sound using Web Audio API with base64 encoded audio
+    """
+    import base64
+
+    # Pre-encoded audio data (small beep sounds)
+    sounds = {
+        "success": "data:audio/wav;base64,UklGRl...",  # Success beep
+        "error": "data:audio/wav;base64,UklGRm..."     # Error beep
+    }
+
+    components.html(f"""
+        <script>
+            const audio = new Audio("{sounds[sound_type]}");
+            audio.play().catch(e => console.log("Audio play failed:", e));
+        </script>
+    """, height=0)
+```
+
+**UI Enhancement - 결과 표시 개선**:
+```
+스캔 성공 시:
+┌─────────────────────────────────────────┐
+│                                         │
+│         ✅ 체크인 완료!                 │
+│                                         │
+│         🔊 (성공 사운드 재생)           │
+│                                         │
+│    체크포인트: 본관 입구                │
+│    시간: 2026-02-05 14:30:45            │
+│                                         │
+│    ⏳ 3초 후 자동으로 초기화됩니다...   │
+│                                         │
+└─────────────────────────────────────────┘
+
+스캔 실패 시:
+┌─────────────────────────────────────────┐
+│                                         │
+│         ❌ 체크인 실패                  │
+│                                         │
+│         🔊 (에러 사운드 재생)           │
+│                                         │
+│    사유: 허용 시간이 아닙니다           │
+│          (09:00 - 18:00)                │
+│                                         │
+│    [다시 시도]                          │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Auto-reset 기능**:
+```python
+import time
+
+if validation_result["valid"]:
+    play_sound("success")
+    st.success(f"✅ {action} 성공!")
+    st.balloons()
+
+    # Show result details
+    with st.container():
+        st.info(f"체크포인트: {checkpoint['name']}")
+        st.info(f"시간: {current_time.strftime('%Y-%m-%d %H:%M:%S')}")
+
+    # Auto-reset after 3 seconds
+    st.caption("⏳ 3초 후 자동으로 초기화됩니다...")
+
+    # Use JavaScript for non-blocking countdown
+    components.html("""
+        <script>
+            setTimeout(() => {
+                window.parent.postMessage({type: 'streamlit:rerun'}, '*');
+            }, 3000);
+        </script>
+    """, height=0)
+```
+
+**Acceptance Criteria**:
+- [ ] 성공 시 성공음 재생
+- [ ] 실패 시 에러음 재생
+- [ ] 브라우저 오디오 권한 요청 처리
+- [ ] 오디오 재생 실패 시 graceful degradation (시각적 피드백만)
+- [ ] 성공 후 3초 자동 초기화 (연속 스캔 용이)
+- [ ] 사운드 on/off 토글 옵션 (선택)
+
+---
+
+### 2.4 정보 기억하기 (Remember Me)
+
+**User Story**:
+```
+As a guest,
+I want to save my name and email in the browser,
+So that I don't have to enter them every time I visit.
+```
+
+**UI Layout**:
+```
+┌─────────────────────────────────────────┐
+│ 👋 게스트 페이지 - 체크인/체크아웃     │
+├─────────────────────────────────────────┤
+│                                         │
+│ 📋 방문자 정보 입력                     │
+│                                         │
+│ 이름   : [홍길동__________]  (자동완성) │
+│ 이메일 : [hong@example.com__] (자동완성)│
+│                                         │
+│ ☑️ 이 정보 기억하기                     │
+│    (이 기기에 저장됩니다)               │
+│                                         │
+│ [      확인      ]                      │
+│                                         │
+│ ─────────────────────────────────────── │
+│ 💡 저장된 정보가 있습니다               │
+│    홍길동 (hong@example.com)            │
+│    [이 정보로 로그인] [삭제]            │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Implementation using Local Storage**:
+```python
+import streamlit.components.v1 as components
+
+def get_saved_guest_info() -> dict:
+    """
+    Retrieve saved guest info from browser localStorage
+    Returns: {"name": str, "email": str} or empty dict
+    """
+    # Use JavaScript to read localStorage and pass to Streamlit
+    saved_info = components.html("""
+        <script>
+            const savedGuest = localStorage.getItem('qr_in_out_guest');
+            if (savedGuest) {
+                const data = JSON.parse(savedGuest);
+                // Send data back to Streamlit via query params or custom event
+                window.parent.postMessage({
+                    type: 'saved_guest',
+                    data: data
+                }, '*');
+            }
+        </script>
+    """, height=0)
+
+    return saved_info or {}
+
+def save_guest_info(name: str, email: str):
+    """Save guest info to browser localStorage"""
+    components.html(f"""
+        <script>
+            localStorage.setItem('qr_in_out_guest', JSON.stringify({{
+                name: "{name}",
+                email: "{email}",
+                saved_at: new Date().toISOString()
+            }}));
+        </script>
+    """, height=0)
+
+def clear_saved_guest_info():
+    """Clear saved guest info from localStorage"""
+    components.html("""
+        <script>
+            localStorage.removeItem('qr_in_out_guest');
+        </script>
+    """, height=0)
+```
+
+**Streamlit Integration**:
+```python
+# Check for saved info on page load
+if "checked_saved_info" not in st.session_state:
+    st.session_state.checked_saved_info = False
+    st.session_state.saved_guest = None
+
+# Show saved info prompt if available
+if st.session_state.saved_guest:
+    saved = st.session_state.saved_guest
+
+    st.info(f"💡 저장된 정보: **{saved['name']}** ({saved['email']})")
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("이 정보로 로그인", type="primary"):
+            # Auto-fill and authenticate
+            guest = verify_guest_by_name_and_email(saved["name"], saved["email"])
+            if guest and not guest.get("deleted_at"):
+                st.session_state.guest_authenticated = True
+                st.session_state.current_guest = guest
+                st.success(f"✅ 환영합니다, {guest['name']}님!")
+                st.rerun()
+            else:
+                st.error("❌ 저장된 정보로 인증할 수 없습니다. 다시 입력해주세요.")
+                clear_saved_guest_info()
+                st.session_state.saved_guest = None
+
+    with col2:
+        if st.button("삭제", type="secondary"):
+            clear_saved_guest_info()
+            st.session_state.saved_guest = None
+            st.rerun()
+
+    st.divider()
+
+# Regular login form
+with st.form("guest_auth_form"):
+    col1, col2 = st.columns(2)
+
+    with col1:
+        name = st.text_input("이름 *", placeholder="홍길동")
+    with col2:
+        email = st.text_input("이메일 *", placeholder="hong@example.com")
+
+    # Remember me checkbox
+    remember_me = st.checkbox(
+        "이 정보 기억하기",
+        help="이 기기의 브라우저에 이름과 이메일을 저장합니다"
+    )
+
+    submitted = st.form_submit_button("확인", type="primary")
+
+    if submitted:
+        if not name or not email:
+            st.error("❌ 이름과 이메일을 모두 입력하세요")
+        else:
+            guest = verify_guest_by_name_and_email(name, email)
+
+            if guest and not guest.get("deleted_at"):
+                # Save to localStorage if checkbox is checked
+                if remember_me:
+                    save_guest_info(name, email)
+
+                st.session_state.guest_authenticated = True
+                st.session_state.current_guest = guest
+                st.success(f"✅ 환영합니다, {guest['name']}님!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.error("❌ 등록되지 않은 방문객입니다.")
+```
+
+**Security Considerations**:
+- localStorage에는 민감한 정보(비밀번호 등) 저장 금지
+- 이름/이메일만 저장 (인증용 토큰 X)
+- 사용자가 명시적으로 "기억하기" 체크해야 저장
+- "삭제" 버튼으로 언제든 제거 가능
+- 공용 기기에서는 사용하지 않도록 안내
+
+**Acceptance Criteria**:
+- [ ] "이 정보 기억하기" 체크박스 제공
+- [ ] 체크 시 localStorage에 이름/이메일 저장
+- [ ] 재방문 시 저장된 정보 표시
+- [ ] "이 정보로 로그인" 원클릭 인증
+- [ ] "삭제" 버튼으로 저장 정보 제거
+- [ ] 저장 정보로 인증 실패 시 자동 삭제
+- [ ] 공용 기기 경고 문구 표시
+
+---
+
+### 2.5 빠른 재스캔 모드 (Kiosk Mode)
+
+**User Story**:
+```
+As a guest using a shared device,
+I want to quickly scan and move on,
+So that the next person can use the device immediately.
+```
+
+**Use Case**:
+- 공용 태블릿/키오스크에서 여러 방문객이 연속으로 체크인
+- 이벤트 입장 시 빠른 대량 체크인
+- 개인정보 입력 없이 QR 스캔만으로 체크인
+
+**UI Layout (Kiosk Mode)**:
+```
+┌─────────────────────────────────────────┐
+│ 📸 빠른 스캔 모드                       │
+│ 🏢 체크포인트: 본관 입구                │
+├─────────────────────────────────────────┤
+│                                         │
+│ ┌─────────────────────────────────┐    │
+│ │                                 │    │
+│ │      [카메라 미리보기]          │    │
+│ │                                 │    │
+│ │   QR 코드를 카메라에 대세요     │    │
+│ │                                 │    │
+│ └─────────────────────────────────┘    │
+│                                         │
+│ 📊 오늘 스캔: 47회                      │
+│                                         │
+│ [🔓 일반 모드로 전환]                   │
+│                                         │
+└─────────────────────────────────────────┘
+
+스캔 성공 후 (2초간 표시):
+┌─────────────────────────────────────────┐
+│                                         │
+│         ✅ 체크인 완료!                 │
+│                                         │
+│         홍길동님                        │
+│         14:30:45                        │
+│                                         │
+│         🔊 (성공 사운드)                │
+│                                         │
+│    [2초 후 자동으로 다음 스캔 대기]     │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Implementation**:
+```python
+# Kiosk mode flag
+if "kiosk_mode" not in st.session_state:
+    st.session_state.kiosk_mode = False
+    st.session_state.kiosk_checkpoint_id = None
+    st.session_state.kiosk_scan_count = 0
+
+def enter_kiosk_mode():
+    """Enter kiosk mode for continuous scanning"""
+    st.title("📸 빠른 스캔 모드")
+
+    # Checkpoint selection (first time only)
+    if not st.session_state.kiosk_checkpoint_id:
+        checkpoints = storage.get_active_checkpoints()
+        selected_id = st.selectbox(
+            "체크포인트 선택",
+            options=[c["id"] for c in checkpoints],
+            format_func=lambda x: get_checkpoint_name(x)
+        )
+
+        if st.button("시작", type="primary"):
+            st.session_state.kiosk_checkpoint_id = selected_id
+            st.rerun()
+        return
+
+    checkpoint = storage.get_by_id("checkpoints", st.session_state.kiosk_checkpoint_id)
+    st.caption(f"🏢 체크포인트: **{checkpoint['name']}**")
+
+    st.divider()
+
+    # Continuous camera scanning
+    from streamlit_camera_input import camera_input
+
+    camera_image = camera_input(
+        "QR 코드를 카메라에 대세요",
+        key=f"kiosk_camera_{st.session_state.kiosk_scan_count}"
+    )
+
+    if camera_image:
+        # Process scan without requiring guest login
+        process_kiosk_scan(camera_image, checkpoint)
+
+    # Stats
+    st.caption(f"📊 오늘 스캔: {st.session_state.kiosk_scan_count}회")
+
+    # Exit kiosk mode
+    if st.button("🔓 일반 모드로 전환"):
+        st.session_state.kiosk_mode = False
+        st.session_state.kiosk_checkpoint_id = None
+        st.rerun()
+
+def process_kiosk_scan(image, checkpoint):
+    """Process QR scan in kiosk mode - extracts guest from QR"""
+    from PIL import Image
+    from pyzbar.pyzbar import decode
+    from core.qr_manager import qr_manager
+
+    image = Image.open(image)
+    decoded_objects = decode(image)
+
+    if not decoded_objects:
+        play_sound("error")
+        st.error("❌ QR 코드를 인식할 수 없습니다")
+        return
+
+    qr_content = decoded_objects[0].data.decode('utf-8')
+    qr_data = qr_manager.parse_qr_content(qr_content)
+
+    if not qr_data:
+        play_sound("error")
+        st.error("❌ 잘못된 QR 코드입니다")
+        return
+
+    # In kiosk mode, guest info must be embedded in QR or use a guest lookup
+    # Option 1: QR contains guest_id (if guest has their own QR)
+    # Option 2: Use checkpoint QR and require guest to type ID quickly
+
+    # For checkpoint QR scan (standard flow):
+    # Show quick guest selector or numeric keypad for guest ID
+
+    play_sound("success")
+    st.success("✅ QR 인식 성공!")
+    st.session_state.kiosk_scan_count += 1
+
+    # Show guest quick-select
+    st.write("### 방문객 선택")
+    guests = storage.get_active_guests()
+    allowed_guests = [g for g in guests if g["id"] in checkpoint.get("allowed_guests", [])]
+
+    if allowed_guests:
+        guest_id = st.selectbox(
+            "이름 선택",
+            options=[g["id"] for g in allowed_guests],
+            format_func=lambda x: get_guest_name(x)
+        )
+
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ 체크인", type="primary"):
+                record_activity(checkpoint["id"], guest_id, "check_in", qr_content)
+                st.balloons()
+                time.sleep(2)
+                st.rerun()
+        with col2:
+            if st.button("🚪 체크아웃"):
+                record_activity(checkpoint["id"], guest_id, "check_out", qr_content)
+                time.sleep(2)
+                st.rerun()
+```
+
+**Kiosk Mode Entry Points**:
+```
+1. URL 파라미터: /Guest?mode=kiosk&checkpoint=cp-uuid
+2. 메뉴 버튼: "빠른 스캔 모드 시작"
+3. Admin 설정: 특정 체크포인트를 kiosk 전용으로 설정
+```
+
+**Security Considerations**:
+- Kiosk 모드에서는 방문 기록 조회 불가 (개인정보 보호)
+- 자동 로그아웃: 5분 미활동 시 초기화
+- 관리자 비밀번호로 kiosk 모드 해제
+
+**Acceptance Criteria**:
+- [ ] Kiosk 모드 진입/종료
+- [ ] 연속 QR 스캔 (자동 리셋)
+- [ ] 스캔 후 2초 대기 → 자동 초기화
+- [ ] 오늘 스캔 횟수 표시
+- [ ] 성공/실패 사운드 피드백
+- [ ] 5분 미활동 시 자동 종료
+- [ ] 방문 기록 조회 비활성화 (kiosk 모드)
+
+---
+
+### 2.6 방문 기록 조회
 
 **User Story**:
 ```
@@ -669,17 +1178,49 @@ st.markdown("""
 - [ ] Time API 실패 시 경고
 - [ ] 시간 조작 감지
 
+#### 연결 상태 표시
+- [ ] 정상 연결 시 초록색 배지 (✅)
+- [ ] Time API 오류 시 노란색 경고 (⚠️)
+- [ ] 서버 연결 끊김 시 빨간색 에러 (❌)
+- [ ] 응답 시간 (latency) 표시
+- [ ] 30초마다 상태 갱신
+
+#### 사운드 피드백
+- [ ] 스캔 성공 시 성공음 재생
+- [ ] 스캔 실패 시 에러음 재생
+- [ ] 브라우저 오디오 권한 미허용 시 시각적 피드백만 표시
+- [ ] 성공 후 3초 자동 초기화
+
+#### 정보 기억하기
+- [ ] "이 정보 기억하기" 체크박스 표시
+- [ ] 체크 후 로그인 시 localStorage에 저장
+- [ ] 재방문 시 저장된 정보 표시
+- [ ] "이 정보로 로그인" 버튼 작동
+- [ ] "삭제" 버튼으로 저장 정보 제거
+- [ ] 저장 정보로 인증 실패 시 자동 삭제
+
+#### 빠른 재스캔 모드 (Kiosk)
+- [ ] Kiosk 모드 진입/종료
+- [ ] 체크포인트 선택 후 연속 스캔
+- [ ] 스캔 후 2초 대기 → 자동 초기화
+- [ ] 오늘 스캔 횟수 표시
+- [ ] 5분 미활동 시 자동 종료
+- [ ] 방문 기록 조회 비활성화 (개인정보 보호)
+
 ---
 
 ## Document Metadata
 
 - **문서 타입**: PRD - Guest Page
 - **프로젝트**: QR In/Out
-- **버전**: 1.1
+- **버전**: 1.2
 - **작성자**: Jake
-- **작성일**: 2026-02-05
+- **작성일**: 2026-02-08
 - **언어**: 한국어
 - **상태**: Active
+- **변경 이력**:
+  - v1.2 (2026-02-08): 연결 상태 표시, 사운드 피드백, 정보 기억하기, 빠른 재스캔 모드 추가
+  - v1.1 (2026-02-05): 초기 버전
 - **관련 문서**:
   - [PRD-Overview.md](PRD-Overview.md) - 시스템 개요
   - [PRD-Admin.md](PRD-Admin.md) - 관리자 페이지

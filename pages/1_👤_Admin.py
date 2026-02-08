@@ -354,6 +354,22 @@ else:
                 with col2:
                     password_confirm = st.text_input("Confirm Host Password *", type="password")
 
+                # WiFi Information (optional, displayed on Host screen)
+                st.write("**📶 WiFi Information** (Optional, displayed on Host screen)")
+                col1, col2 = st.columns(2)
+                with col1:
+                    wifi_ssid = st.text_input(
+                        "WiFi SSID",
+                        placeholder="Guest_Network",
+                        help="WiFi network name for guests"
+                    )
+                with col2:
+                    wifi_password = st.text_input(
+                        "WiFi Password",
+                        placeholder="welcome2024",
+                        help="WiFi password (leave empty for open network)"
+                    )
+
                 guests = storage.get_active_guests()
                 allowed_guests = st.multiselect(
                     "Allowed Guests (Multiselect)",
@@ -389,7 +405,9 @@ else:
                             ),
                             qr_mode=qr_mode,
                             admin_password_hash=AuthManager.hash_password(admin_password),
-                            allowed_guests=allowed_guests
+                            allowed_guests=allowed_guests,
+                            wifi_ssid=wifi_ssid if wifi_ssid else None,
+                            wifi_password=wifi_password if wifi_password else None
                         )
                         storage.add("checkpoints", cp.to_dict())
                         st.success(f"✅ Checkpoint '{name}' has been created!")
@@ -436,11 +454,32 @@ else:
                             default=cp_data["allowed_guests"],
                             format_func=lambda x: f"{get_guest_name(x)} ({get_guest_email(x)})"
                         )
-                        
+
+                        # WiFi Information
+                        st.write("**📶 WiFi Information** (Optional)")
+                        ec1, ec2 = st.columns(2)
+                        with ec1:
+                            e_wifi_ssid = st.text_input(
+                                "WiFi SSID",
+                                value=cp_data.get("wifi_ssid", "") or "",
+                                placeholder="Guest_Network"
+                            )
+                        with ec2:
+                            e_wifi_password = st.text_input(
+                                "WiFi Password",
+                                value=cp_data.get("wifi_password", "") or "",
+                                placeholder="welcome2024"
+                            )
+
                         st.info("Enter a new password to change HOST password. Leave blank to keep current.")
                         e_password = st.text_input("New Host Password", type="password")
                         
-                        e_submitted = st.form_submit_button("Update", type="primary")
+                        st.divider()
+                        st.subheader("🛡️ QR Security")
+                        st.write(f"Current QR Version: **#{cp_data.get('current_qr_sequence', 0)}**")
+                        reissue_qr = st.checkbox("Reissue QR Code", help="Increments the sequence number. This will immediately invalidate ALL previously printed/displayed QR codes for this checkpoint.")
+                        
+                        e_submitted = st.form_submit_button("Update Checkpoint", type="primary")
                         
                         if e_submitted:
                             errors = []
@@ -464,10 +503,15 @@ else:
                                         "end_time": e_end.strftime("%H:%M")
                                     },
                                     "qr_mode": e_qr_mode,
-                                    "allowed_guests": e_guests
+                                    "allowed_guests": e_guests,
+                                    "wifi_ssid": e_wifi_ssid if e_wifi_ssid else None,
+                                    "wifi_password": e_wifi_password if e_wifi_password else None
                                 }
                                 if e_password:
                                     updates["admin_password_hash"] = AuthManager.hash_password(e_password)
+                                
+                                if reissue_qr:
+                                    updates["current_qr_sequence"] = cp_data.get("current_qr_sequence", 0) + 1
                                 
                                 storage.update("checkpoints", selected_id, updates)
                                 st.success("✅ Checkpoint updated successfully!")

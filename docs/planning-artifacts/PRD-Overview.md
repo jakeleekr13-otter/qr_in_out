@@ -1,9 +1,9 @@
 ---
 document_type: "Product Requirements Document - Overview"
 project: "QR In/Out"
-version: "1.1"
+version: "1.2"
 author: "Jake"
-date: "2026-02-05"
+date: "2026-02-08"
 status: "Active"
 language: "Korean"
 purpose: "시스템 개요, 아키텍처, 공통 모듈 명세"
@@ -43,7 +43,7 @@ QR In/Out은 **Streamlit 기반의 QR 코드 체크포인트 관리 시스템**�
 | **QR 스캔** | 실시간 카메라 스캔 (streamlit-camera-input) |
 | **Multi-page** | 3개 독립 페이지 (Admin/Host/Guest) |
 | **시간 동기화** | World Time API (로컬 시간 조작 방지) |
-| **보안** | Sequence Number + HMAC Signature |
+| **보안** | Sequence Number + HMAC Signature (Static/Dynamic 공통) |
 | **데이터 보존** | Soft Delete (삭제 이력 보존) |
 
 ### 문서 구조
@@ -174,7 +174,8 @@ qr_in_out/
 │   ├── qr_manager.py              # QR generation & validation
 │   ├── time_service.py            # Time synchronization (World Time API)
 │   ├── time_validator.py          # Time-based access control
-│   └── auth.py                    # Password management
+│   ├── auth.py                    # Password management
+│   └── connection_health.py       # Connection health monitoring
 ├── pages/
 │   ├── 1_👤_Admin.py              # Admin page
 │   ├── 2_🖥️_Host.py               # Host page
@@ -182,6 +183,10 @@ qr_in_out/
 ├── utils/
 │   ├── __init__.py
 │   └── helpers.py                 # Helper functions
+├── assets/                        # Static assets
+│   └── sounds/
+│       ├── success.mp3           # Success sound (check-in/out)
+│       └── error.mp3             # Error sound (scan failure)
 ├── data/                          # Data directory (gitignored)
 │   ├── checkpoints.json
 │   ├── guests.json
@@ -221,6 +226,8 @@ class Checkpoint:
     admin_password_hash: str            # 관리 비밀번호 (해시)
     allowed_guests: List[str]           # 허용 방문객 ID 리스트
     current_qr_sequence: int = 0        # 현재 QR 순차번호 (dynamic only)
+    wifi_ssid: Optional[str] = None     # WiFi 네트워크 이름 (Host 화면 표시용)
+    wifi_password: Optional[str] = None # WiFi 비밀번호 (Host 화면 표시용)
     deleted_at: Optional[datetime] = None  # Soft delete 타임스탬프
     created_at: datetime
     updated_at: datetime
@@ -240,6 +247,8 @@ class Checkpoint:
   "admin_password_hash": "5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8",
   "allowed_guests": ["guest-uuid-1", "guest-uuid-2"],
   "current_qr_sequence": 42,
+  "wifi_ssid": "Guest_Network",
+  "wifi_password": "welcome2024",
   "deleted_at": null,
   "created_at": "2026-02-05T09:00:00+09:00",
   "updated_at": "2026-02-05T10:30:00+09:00"
@@ -413,7 +422,9 @@ Static QR:
   "version": "1.0",
   "checkpoint_id": "cp-uuid",
   "qr_mode": "static",
-  "created_at": "2026-02-05T10:00:00Z"
+  "sequence": 42,
+  "created_at": "2026-02-05T10:00:00Z",
+  "signature": "hmac-sha256-signature"
 }
 ```
 
@@ -522,6 +533,62 @@ class AuthManager:
 - SHA-256 (간단한 구현)
 - 프로덕션 권장: bcrypt 또는 argon2
 
+### 4.6 Connection Health Check (`core/connection_health.py`)
+
+**책임**: 서버 및 외부 서비스 연결 상태 모니터링
+
+**주요 메서드**:
+```python
+@dataclass
+class ConnectionStatus:
+    server_connected: bool          # Streamlit 서버 연결 상태
+    time_api_connected: bool        # World Time API 연결 상태
+    last_check: datetime            # 마지막 확인 시간
+    latency_ms: Optional[int]       # 응답 시간 (ms)
+    error_message: Optional[str]    # 에러 메시지 (있을 경우)
+
+class ConnectionHealthCheck:
+    @staticmethod
+    @st.cache_data(ttl=30)
+    def check_time_api() -> Tuple[bool, Optional[int], Optional[str]]
+        """
+        World Time API 연결 확인
+        Returns: (connected, latency_ms, error_message)
+        """
+
+    @staticmethod
+    def get_connection_status() -> ConnectionStatus
+        """
+        전체 연결 상태 반환
+        """
+
+    @staticmethod
+    def render_status_badge(status: ConnectionStatus)
+        """
+        Streamlit UI에 연결 상태 배지 렌더링
+        - ✅ 정상: 초록색
+        - ⚠️ 부분 오류: 노란색
+        - ❌ 연결 끊김: 빨간색
+        """
+```
+
+**UI 표시 형식**:
+```
+# 정상
+📶 ✅ 연결 정상 (45ms)
+
+# Time API 오류
+📶 ⚠️ 시간 동기화 불가 - 로컬 시간 사용 중
+
+# 서버 연결 끊김
+📶 ❌ 서버 연결 끊김 - 네트워크를 확인하세요
+```
+
+**특징**:
+- 30초 캐싱 (과도한 API 호출 방지)
+- Graceful degradation (Time API 실패 시 로컬 시간 사용)
+- 사용자 친화적 에러 메시지
+
 ---
 
 ## 5. Security
@@ -589,7 +656,7 @@ class AuthManager:
               │
               ▼
 ┌─────────────────────────────────────────────┐
-│  3. Check Sequence Number (dynamic only)    │
+│  3. Check Sequence Number                   │
 │     ✓ QR.sequence >= Checkpoint.sequence?   │
 │     ✗ Reject: "만료된 QR (이전 버전)"       │
 └─────────────┬───────────────────────────────┘
@@ -740,9 +807,201 @@ See individual page PRDs:
 
 ---
 
-## 8. Deployment
+## 8. Network Architecture
 
-### 8.1 Installation
+### 8.1 Network Requirements
+
+#### 필수 요구사항
+
+| 구성요소 | 필요한 연결 | 포트 | 설명 |
+|---------|-----------|-----|------|
+| **Streamlit 서버** | Inbound HTTP/HTTPS | 8501 (기본) | 클라이언트 접속용 |
+| **모든 클라이언트** | Outbound HTTPS | 443 | World Time API 접근 |
+| **Admin** | 서버 접근 | 8501 | 체크포인트/게스트 관리 |
+| **Host** | 서버 접근 | 8501 | QR 코드 표시 |
+| **Guest** | 서버 접근 | 8501 | QR 스캔 및 체크인 |
+
+#### 방화벽 설정
+
+```
+# Inbound Rules (서버)
+┌────────────────────────────────────────────┐
+│ Port 8501/TCP  │ Allow │ 모든 클라이언트   │
+└────────────────────────────────────────────┘
+
+# Outbound Rules (모든 디바이스)
+┌────────────────────────────────────────────┐
+│ Port 443/TCP   │ Allow │ worldtimeapi.org │
+└────────────────────────────────────────────┘
+```
+
+### 8.2 Deployment Scenarios
+
+#### 시나리오 A: 동일 LAN (가장 단순)
+
+**적합한 환경**: 소규모 사무실, 단일 건물
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Local Network (192.168.x.x)            │
+│                                                     │
+│  ┌──────────────┐  ┌──────────┐  ┌──────────┐      │
+│  │   Server     │  │   Host   │  │  Guest   │      │
+│  │ 192.168.1.10 │  │ (태블릿) │  │  (폰)    │      │
+│  │    :8501     │  │          │  │          │      │
+│  └──────────────┘  └──────────┘  └──────────┘      │
+│         │                │             │            │
+│  ───────┴────────────────┴─────────────┴────────   │
+│                    WiFi Router                      │
+│                  (인터넷 연결)                      │
+└─────────────────────────────────────────────────────┘
+
+설정 방법:
+1. 서버 실행: streamlit run app.py --server.address 0.0.0.0
+2. Host/Guest 접속: http://192.168.1.10:8501
+```
+
+#### 시나리오 B: 클라우드 배포 (원격 체크포인트 지원)
+
+**적합한 환경**: 다중 지점, 원격 체크포인트
+
+```
+                    ┌─────────────────────┐
+                    │   Cloud Server      │
+                    │  (AWS/GCP/Azure)    │
+                    │   Public IP/DNS     │
+                    │  qr.company.com     │
+                    └──────────┬──────────┘
+                               │ HTTPS (443)
+           ┌───────────────────┼───────────────────┐
+           │                   │                   │
+      ┌────▼────┐        ┌────▼────┐        ┌────▼────┐
+      │  Admin  │        │  Host   │        │  Guest  │
+      │ (본사)  │        │ (지점A) │        │ (모바일)│
+      │ 서울    │        │ 부산    │        │ 어디서든│
+      └─────────┘        └─────────┘        └─────────┘
+
+설정 방법:
+1. 클라우드에 Docker/VM 배포
+2. Nginx/Caddy로 HTTPS 설정
+3. 도메인 연결 (qr.company.com)
+4. 모든 디바이스에서 https://qr.company.com 접속
+```
+
+#### 시나리오 C: VPN/터널 (보안 강화)
+
+**적합한 환경**: 보안 요구사항이 높은 환경
+
+```
+┌─────────────────────────────────────────────────────┐
+│                    본사 네트워크                     │
+│  ┌──────────────┐      ┌──────────────┐            │
+│  │   Server     │      │ VPN Gateway  │            │
+│  │ (Private IP) │      │              │            │
+│  └──────────────┘      └──────┬───────┘            │
+└──────────────────────────────┼──────────────────────┘
+                               │ VPN Tunnel
+                               │ (암호화)
+┌──────────────────────────────┼──────────────────────┐
+│                    원격 지점                         │
+│                      ┌───────▼───────┐              │
+│                      │  VPN Client   │              │
+│                      └───────┬───────┘              │
+│                              │                      │
+│  ┌──────────────┐    ┌──────▼───────┐              │
+│  │    Host      │    │   Guest      │              │
+│  │  (태블릿)    │    │   (모바일)   │              │
+│  └──────────────┘    └──────────────┘              │
+└─────────────────────────────────────────────────────┘
+
+설정 방법:
+1. 본사에 VPN 서버 설정 (WireGuard/OpenVPN)
+2. 원격 지점에 VPN 클라이언트 설정
+3. VPN 연결 후 Private IP로 서버 접속
+```
+
+### 8.3 HTTPS 설정 (프로덕션 필수)
+
+#### 왜 HTTPS가 필요한가?
+
+| 기능 | HTTP | HTTPS |
+|------|------|-------|
+| 카메라 접근 | ❌ 차단됨 (localhost 제외) | ✅ 허용 |
+| 데이터 암호화 | ❌ 평문 전송 | ✅ 암호화 |
+| 중간자 공격 방지 | ❌ 취약 | ✅ 보호 |
+
+#### Nginx + Let's Encrypt 설정 예시
+
+```nginx
+# /etc/nginx/sites-available/qr-in-out
+server {
+    listen 80;
+    server_name qr.company.com;
+    return 301 https://$server_name$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    server_name qr.company.com;
+
+    ssl_certificate /etc/letsencrypt/live/qr.company.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/qr.company.com/privkey.pem;
+
+    location / {
+        proxy_pass http://localhost:8501;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+#### Caddy 설정 예시 (더 간단)
+
+```
+# Caddyfile
+qr.company.com {
+    reverse_proxy localhost:8501
+}
+```
+
+### 8.4 Connection Health Check
+
+#### 연결 상태 모니터링
+
+시스템은 다음 연결 상태를 실시간으로 모니터링합니다:
+
+```python
+@dataclass
+class ConnectionStatus:
+    server_connected: bool      # Streamlit 서버 연결
+    time_api_connected: bool    # World Time API 연결
+    last_check: datetime        # 마지막 확인 시간
+    latency_ms: Optional[int]   # 응답 시간 (ms)
+```
+
+#### UI 표시
+
+```
+# 정상 상태
+📶 연결 상태: ✅ 정상 (응답: 45ms)
+
+# Time API 오류
+📶 연결 상태: ⚠️ 시간 동기화 불가 (로컬 시간 사용)
+
+# 서버 연결 끊김
+📶 연결 상태: ❌ 서버 연결 끊김 - 네트워크를 확인하세요
+```
+
+---
+
+## 9. Deployment
+
+### 9.1 Installation
 
 **Prerequisites**:
 - Python 3.10+
@@ -872,11 +1131,14 @@ cp -r data/ backups/data-$(date +%Y%m%d-%H%M%S)/
 
 - **문서 타입**: PRD Overview
 - **프로젝트**: QR In/Out
-- **버전**: 1.1
+- **버전**: 1.2
 - **작성자**: Jake
-- **작성일**: 2026-02-05
+- **작성일**: 2026-02-08
 - **언어**: 한국어
 - **상태**: Active
+- **변경 이력**:
+  - v1.2 (2026-02-08): 네트워크 아키텍처, WiFi 정보 필드, 연결 상태 모니터링 추가
+  - v1.1 (2026-02-05): 초기 버전
 - **관련 문서**:
   - [PRD-Admin.md](PRD-Admin.md) - 관리자 페이지 명세
   - [PRD-Host.md](PRD-Host.md) - 호스트 페이지 명세

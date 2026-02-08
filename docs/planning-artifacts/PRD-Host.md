@@ -1,9 +1,9 @@
 ---
 document_type: "Product Requirements Document - Host Page"
 project: "QR In/Out"
-version: "1.1"
+version: "1.2"
 author: "Jake"
-date: "2026-02-05"
+date: "2026-02-08"
 status: "Active"
 language: "Korean"
 purpose: "호스트 페이지 상세 기능 명세"
@@ -45,8 +45,11 @@ related_docs:
 | Static QR 표시 | 고정형 QR 코드 표시 및 다운로드 | 🔴 필수 |
 | Dynamic QR 표시 | 30분 주기 자동 갱신 QR 표시 | 🔴 필수 |
 | 시간 제어 | 허용 시간 외 QR 숨김 | 🔴 필수 |
+| 연결 상태 표시 | 서버/Time API 연결 상태 배지 | 🔴 필수 |
+| WiFi 정보 표시 | 게스트용 WiFi SSID/Password 표시 | 🟡 중요 |
 | 카운트다운 | 다음 갱신까지 시간 표시 | 🟡 중요 |
 | 화면 잠금 | 비밀번호로 화면 보호 | 🟡 중요 |
+| 고대비 QR 옵션 | 밝은 환경에서 스캔 용이하도록 | 🟢 선택 |
 
 ---
 
@@ -147,7 +150,7 @@ So that visitors can scan it for check-in/out.
 │ 📍 본관 입구            [🔒 잠금]       │
 │ 서울시 강남구 테헤란로 123             │
 ├─────────────────────────────────────────┤
-│                                         │
+│ 📶 ✅ 연결 정상 (45ms)                  │
 │ ✅ 현재 허용 시간 내입니다              │
 │ ⏰ 2026-02-05 14:30:45 (Asia/Seoul)     │
 │                                         │
@@ -162,6 +165,9 @@ So that visitors can scan it for check-in/out.
 │                                         │
 │ [🖨️ 프린트용 다운로드]                  │
 │                                         │
+│ ─────────────────────────────────────── │
+│ 📶 WiFi: Guest_Network                 │
+│ 🔑 Password: welcome2024               │
 └─────────────────────────────────────────┘
 ```
 
@@ -207,7 +213,10 @@ if st.session_state.host_authenticated:
         if checkpoint["qr_mode"] == "static":
             # Generate static QR
             from core.qr_manager import qr_manager
-            qr_content = qr_manager.generate_static_qr_content(checkpoint["id"])
+            qr_content = qr_manager.generate_static_qr_content(
+                checkpoint["id"],
+                sequence=checkpoint.get("current_qr_sequence", 0)
+            )
             qr_image = qr_manager.generate_qr_image(qr_content, size=15)
 
             # Display QR code (large)
@@ -254,7 +263,7 @@ So that security is enhanced through time-based QR rotation.
 │ 📍 본관 입구            [🔒 잠금]       │
 │ 서울시 강남구 테헤란로 123             │
 ├─────────────────────────────────────────┤
-│                                         │
+│ 📶 ✅ 연결 정상 (45ms)                  │
 │ ✅ 현재 허용 시간 내입니다              │
 │ ⏰ 2026-02-05 14:30:45 (Asia/Seoul)     │
 │                                         │
@@ -270,6 +279,9 @@ So that security is enhanced through time-based QR rotation.
 │ ⏱️ 다음 갱신까지: 14:25                │
 │ [████████████████░░░░] 75%             │
 │                                         │
+│ ─────────────────────────────────────── │
+│ 📶 WiFi: Guest_Network                 │
+│ 🔑 Password: welcome2024               │
 └─────────────────────────────────────────┘
 ```
 
@@ -435,6 +447,318 @@ if st.session_state.get("show_lock_message"):
 
 ---
 
+### 2.6 WiFi 정보 표시
+
+**User Story**:
+```
+As a host,
+I want to display WiFi information on the QR screen,
+So that guests can easily connect to the network before scanning.
+```
+
+**UI Layout**:
+```
+┌─────────────────────────────────────────┐
+│         [QR CODE]                       │
+│                                         │
+│ ⏱️ 다음 갱신까지: 14:25                 │
+│                                         │
+│ ─────────────────────────────────────── │
+│                                         │
+│ 📶 WiFi 정보                            │
+│ ┌─────────────────────────────────────┐ │
+│ │  네트워크: Guest_Network            │ │
+│ │  비밀번호: welcome2024              │ │
+│ └─────────────────────────────────────┘ │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Streamlit Code**:
+```python
+# WiFi Information Display (at bottom of screen)
+def render_wifi_info(checkpoint: Dict):
+    """Render WiFi information if configured"""
+    wifi_ssid = checkpoint.get("wifi_ssid")
+    wifi_password = checkpoint.get("wifi_password")
+
+    if wifi_ssid:
+        st.divider()
+        st.write("### 📶 WiFi 정보")
+
+        with st.container():
+            col1, col2 = st.columns(2)
+
+            with col1:
+                st.markdown(f"""
+                <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px;">
+                    <strong>네트워크:</strong> {wifi_ssid}
+                </div>
+                """, unsafe_allow_html=True)
+
+            with col2:
+                if wifi_password:
+                    st.markdown(f"""
+                    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px;">
+                        <strong>비밀번호:</strong> {wifi_password}
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div style="background-color: #f0f2f6; padding: 15px; border-radius: 10px;">
+                        <strong>비밀번호:</strong> 없음 (Open Network)
+                    </div>
+                    """, unsafe_allow_html=True)
+
+# Call in main display
+if is_allowed:
+    # ... QR code display ...
+    render_wifi_info(checkpoint)
+```
+
+**Acceptance Criteria**:
+- [ ] WiFi SSID 설정된 경우에만 표시
+- [ ] 비밀번호가 없으면 "없음 (Open Network)" 표시
+- [ ] 가독성 좋은 큰 폰트
+- [ ] QR 코드 하단에 배치
+
+---
+
+### 2.7 연결 상태 표시
+
+**User Story**:
+```
+As a host,
+I want to see the connection status,
+So that I know if the system is working properly.
+```
+
+**UI Layout**:
+```
+┌─────────────────────────────────────────┐
+│ 📍 본관 입구            [🔒 잠금]       │
+│ 서울시 강남구 테헤란로 123             │
+├─────────────────────────────────────────┤
+│ 📶 ✅ 연결 정상 (45ms)                  │  ← 연결 상태 배지
+│ ⏰ 2026-02-05 14:30:45 (동기화됨)       │
+│                                         │
+│         [QR CODE]                       │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**상태별 표시**:
+
+| 상태 | 배지 | 색상 |
+|------|------|------|
+| 정상 | 📶 ✅ 연결 정상 (45ms) | 초록 |
+| Time API 오류 | 📶 ⚠️ 시간 동기화 불가 | 노랑 |
+| 서버 연결 끊김 | 📶 ❌ 서버 연결 끊김 | 빨강 |
+
+**Streamlit Code**:
+```python
+from core.connection_health import ConnectionHealthCheck
+
+def render_connection_status():
+    """Render connection status badge"""
+    status = ConnectionHealthCheck.get_connection_status()
+
+    if status.server_connected and status.time_api_connected:
+        latency_text = f" ({status.latency_ms}ms)" if status.latency_ms else ""
+        st.success(f"📶 ✅ 연결 정상{latency_text}")
+    elif status.server_connected and not status.time_api_connected:
+        st.warning("📶 ⚠️ 시간 동기화 불가 - 로컬 시간 사용 중")
+    else:
+        st.error("📶 ❌ 서버 연결 끊김 - 네트워크를 확인하세요")
+
+# In main display
+if st.session_state.host_authenticated:
+    # Header
+    st.header(f"📍 {checkpoint['name']}")
+
+    # Connection status (always visible)
+    render_connection_status()
+
+    # Time sync status
+    time_service.show_time_sync_status(is_synced, current_time)
+
+    # ... rest of the display ...
+```
+
+**Acceptance Criteria**:
+- [ ] 30초마다 연결 상태 확인
+- [ ] 상태별 색상 구분 (초록/노랑/빨강)
+- [ ] 응답 시간(latency) 표시
+- [ ] Time API 실패 시 경고 메시지
+- [ ] 서버 연결 끊김 시 에러 메시지
+
+---
+
+### 2.8 고대비 QR 옵션
+
+**User Story**:
+```
+As a host,
+I want to display high contrast QR codes,
+So that guests can scan more easily in bright environments.
+```
+
+**Problem**:
+- 밝은 햇빛 아래서 화면이 잘 안 보임
+- 저가형 폰 카메라로 스캔 어려움
+- 반사되는 화면에서 인식률 저하
+
+**Solution - QR Display Modes**:
+
+| 모드 | 설명 | 용도 |
+|------|------|------|
+| **기본** | 검정 QR + 흰 배경 | 일반 실내 환경 |
+| **고대비** | 진한 검정 QR + 밝은 노랑 배경 | 밝은 환경 |
+| **반전** | 흰색 QR + 검정 배경 | 어두운 환경 |
+
+**UI Layout**:
+```
+┌─────────────────────────────────────────┐
+│ 📍 본관 입구            [🔒] [🎨]       │  ← 표시 설정 버튼
+│ 서울시 강남구 테헤란로 123             │
+├─────────────────────────────────────────┤
+│                                         │
+│ 표시 설정:                              │
+│ [기본 ▼] [QR 크기: 중 ▼]               │
+│                                         │
+│         ┌───────────────┐              │
+│         │               │              │
+│         │   QR  CODE    │              │
+│         │  (고대비 모드) │              │
+│         │               │              │
+│         └───────────────┘              │
+│                                         │
+└─────────────────────────────────────────┘
+```
+
+**Implementation**:
+```python
+from PIL import Image
+import qrcode
+
+class QRDisplayOptions:
+    """QR Display configuration"""
+
+    MODES = {
+        "default": {
+            "name": "기본",
+            "fill_color": "black",
+            "back_color": "white",
+            "border_color": "#4CAF50"
+        },
+        "high_contrast": {
+            "name": "고대비",
+            "fill_color": "#000000",
+            "back_color": "#FFFF00",  # Bright yellow
+            "border_color": "#FF6600"
+        },
+        "inverted": {
+            "name": "반전",
+            "fill_color": "white",
+            "back_color": "black",
+            "border_color": "#333333"
+        }
+    }
+
+    SIZES = {
+        "small": {"box_size": 8, "label": "소"},
+        "medium": {"box_size": 12, "label": "중"},
+        "large": {"box_size": 16, "label": "대"},
+        "xlarge": {"box_size": 20, "label": "특대"}
+    }
+
+def generate_qr_with_options(content: str, mode: str = "default", size: str = "medium") -> Image:
+    """Generate QR code with display options"""
+    mode_config = QRDisplayOptions.MODES.get(mode, QRDisplayOptions.MODES["default"])
+    size_config = QRDisplayOptions.SIZES.get(size, QRDisplayOptions.SIZES["medium"])
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,  # High error correction
+        box_size=size_config["box_size"],
+        border=4
+    )
+    qr.add_data(content)
+    qr.make(fit=True)
+
+    img = qr.make_image(
+        fill_color=mode_config["fill_color"],
+        back_color=mode_config["back_color"]
+    )
+
+    return img
+
+# Streamlit UI
+def render_qr_display_settings():
+    """Render QR display options"""
+    with st.expander("🎨 표시 설정"):
+        col1, col2 = st.columns(2)
+
+        with col1:
+            display_mode = st.selectbox(
+                "표시 모드",
+                options=["default", "high_contrast", "inverted"],
+                format_func=lambda x: QRDisplayOptions.MODES[x]["name"],
+                key="qr_display_mode"
+            )
+
+        with col2:
+            qr_size = st.selectbox(
+                "QR 크기",
+                options=["small", "medium", "large", "xlarge"],
+                format_func=lambda x: QRDisplayOptions.SIZES[x]["label"],
+                index=1,  # Default: medium
+                key="qr_size"
+            )
+
+        return display_mode, qr_size
+
+# In main QR display
+display_mode, qr_size = render_qr_display_settings()
+qr_image = generate_qr_with_options(qr_content, mode=display_mode, size=qr_size)
+
+# Apply border color based on mode
+mode_config = QRDisplayOptions.MODES[display_mode]
+st.markdown(f"""
+    <style>
+        .stImage > img {{
+            border: 5px solid {mode_config['border_color']};
+            border-radius: 10px;
+        }}
+    </style>
+""", unsafe_allow_html=True)
+
+st.image(qr_image, use_column_width=True)
+```
+
+**Preview Images**:
+```
+기본 모드:           고대비 모드:         반전 모드:
+┌──────────┐        ┌──────────┐        ┌──────────┐
+│ ████████ │        │▓▓████▓▓▓▓│        │░░░░░░░░░░│
+│ █      █ │        │▓▓█    █▓▓│        │░░      ░░│
+│ █ ████ █ │  →     │▓▓█ ██ █▓▓│  →     │░░ ░░░░ ░░│
+│ █      █ │        │▓▓█    █▓▓│        │░░      ░░│
+│ ████████ │        │▓▓████▓▓▓▓│        │░░░░░░░░░░│
+└──────────┘        └──────────┘        └──────────┘
+ 흰 배경/검정 QR     노랑 배경/검정 QR    검정 배경/흰 QR
+```
+
+**Acceptance Criteria**:
+- [ ] 3가지 표시 모드 제공 (기본/고대비/반전)
+- [ ] 4가지 크기 옵션 (소/중/대/특대)
+- [ ] 설정 값 session_state에 저장
+- [ ] 모드별 테두리 색상 변경
+- [ ] 고대비 모드에서 Error Correction Level H 사용
+- [ ] 설정 펼침/접기 UI (기본: 접힘)
+
+---
+
 ## 3. UI Specifications
 
 ### 3.1 Full Screen Mode
@@ -554,17 +878,42 @@ st.markdown("""
 - [ ] Time API 실패 시 경고 메시지
 - [ ] Fallback to local time
 
+#### 연결 상태 표시
+- [ ] 정상 연결 시 초록색 배지 (✅)
+- [ ] Time API 오류 시 노란색 경고 (⚠️)
+- [ ] 서버 연결 끊김 시 빨간색 에러 (❌)
+- [ ] 응답 시간 (latency) 표시
+- [ ] 30초마다 상태 갱신
+
+#### WiFi 정보 표시
+- [ ] WiFi SSID 설정된 경우 표시
+- [ ] WiFi SSID 미설정 시 섹션 숨김
+- [ ] 비밀번호 있는 경우 표시
+- [ ] Open Network 표시 (비밀번호 없음)
+- [ ] 가독성 좋은 폰트 크기
+
+#### 고대비 QR 옵션
+- [ ] 기본 모드 (검정 QR + 흰 배경)
+- [ ] 고대비 모드 (검정 QR + 노랑 배경)
+- [ ] 반전 모드 (흰 QR + 검정 배경)
+- [ ] 4가지 크기 옵션 (소/중/대/특대)
+- [ ] 설정 값 유지 (session_state)
+- [ ] 모드별 테두리 색상 변경
+
 ---
 
 ## Document Metadata
 
 - **문서 타입**: PRD - Host Page
 - **프로젝트**: QR In/Out
-- **버전**: 1.1
+- **버전**: 1.2
 - **작성자**: Jake
-- **작성일**: 2026-02-05
+- **작성일**: 2026-02-08
 - **언어**: 한국어
 - **상태**: Active
+- **변경 이력**:
+  - v1.2 (2026-02-08): WiFi 정보 표시, 연결 상태 표시, 고대비 QR 옵션 추가
+  - v1.1 (2026-02-05): 초기 버전
 - **관련 문서**:
   - [PRD-Overview.md](PRD-Overview.md) - 시스템 개요
   - [PRD-Admin.md](PRD-Admin.md) - 관리자 페이지

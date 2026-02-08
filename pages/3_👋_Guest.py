@@ -33,6 +33,7 @@ from core.models import ActivityLog
 from core.qr_manager import QRManager
 from core.time_service import TimeService
 from core.time_validator import TimeValidator
+from core.connection_health import ConnectionHealthCheck
 from utils.helpers import get_checkpoint_name
 
 # Initialize storage
@@ -124,7 +125,12 @@ def validate_qr_scan(qr_data, guest, action, current_time, is_synced):
     if checkpoint.get("deleted_at"):
         return False, "This checkpoint has been removed."
     
-    # 2. Dynamic QR Validation (Signature, Expiration)
+    # 2. QR Security & Sequence Validation
+    # A. Signature Check (Always required for both static/dynamic)
+    if not QRManager.verify_signature(qr_data):
+        return False, "Invalid QR Signature (Tampered or Unknown source)."
+
+    # B. Mode-specific checks (Expiration)
     if qr_data.get("qr_mode") == "dynamic":
         is_valid_dynamic, invalid_reason = QRManager.validate_dynamic_qr(
             qr_data, checkpoint, current_time, is_synced
@@ -132,11 +138,11 @@ def validate_qr_scan(qr_data, guest, action, current_time, is_synced):
         if not is_valid_dynamic:
             return False, invalid_reason
             
-        # Additional Sequence Check
-        qr_seq = qr_data.get("sequence", 0)
-        curr_seq = checkpoint.get("current_qr_sequence", 0)
-        if qr_seq < curr_seq:
-            return False, "Expired QR Code (Old sequence). Please scan a fresh code."
+    # C. Sequence Check (Common for both now - prevents reuse of old printouts or old dynamic codes)
+    qr_seq = qr_data.get("sequence", 0)
+    curr_seq = checkpoint.get("current_qr_sequence", 0)
+    if qr_seq < curr_seq:
+        return False, f"Expired QR Code (Sequence #{qr_seq} < #{curr_seq}). Please scan a fresh/reissued code."
 
     # 3. Guest Authorization (Checkpoint allowed lists)
     if guest["id"] not in checkpoint["allowed_guests"]:
@@ -205,6 +211,8 @@ else:
     c1, c2 = st.columns([3, 1])
     with c1:
         st.subheader(f"👋 Hi, {guest['name']}")
+        # Connection Status Badge
+        ConnectionHealthCheck.render_status_badge()
         settings_data = storage.load_admin_settings()
         current_time_val, is_synced_val = TimeService.get_current_time(guest["timezone"])
         TimeService.show_time_sync_status(is_synced_val, current_time_val)

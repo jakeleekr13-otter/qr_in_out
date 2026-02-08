@@ -22,14 +22,17 @@ class Checkpoint:
     admin_password_hash: str            # 관리 비밀번호 (해시)
     allowed_guests: List[str]           # 허용 방문객 ID 리스트
     current_qr_sequence: int = 0        # 현재 QR 순차번호 (dynamic only)
+    wifi_ssid: Optional[str] = None     # WiFi 네트워크 이름 (Host 화면 표시용)
+    wifi_password: Optional[str] = None # WiFi 비밀번호 (Host 화면 표시용)
     deleted_at: Optional[str] = None    # Soft delete 타임스탬프 (ISO format string)
     created_at: str = field(default_factory=lambda: datetime.now(pytz.UTC).isoformat())
     updated_at: str = field(default_factory=lambda: datetime.now(pytz.UTC).isoformat())
 
     @classmethod
-    def create_new(cls, name: str, location: str, allowed_hours: AllowedHours, 
-                   qr_mode: Literal["static", "dynamic"], admin_password_hash: str, 
-                   allowed_guests: List[str]):
+    def create_new(cls, name: str, location: str, allowed_hours: AllowedHours,
+                   qr_mode: Literal["static", "dynamic"], admin_password_hash: str,
+                   allowed_guests: List[str], wifi_ssid: Optional[str] = None,
+                   wifi_password: Optional[str] = None):
         now = datetime.now(pytz.UTC).isoformat()
         return cls(
             id=str(uuid.uuid4()),
@@ -39,6 +42,8 @@ class Checkpoint:
             qr_mode=qr_mode,
             admin_password_hash=admin_password_hash,
             allowed_guests=allowed_guests,
+            wifi_ssid=wifi_ssid,
+            wifi_password=wifi_password,
             created_at=now,
             updated_at=now
         )

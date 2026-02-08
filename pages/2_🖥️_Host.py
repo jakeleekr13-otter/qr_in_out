@@ -9,6 +9,7 @@ from core.qr_manager import QRManager
 from core.time_service import TimeService
 from core.auth import AuthManager
 from core.time_validator import TimeValidator
+from core.connection_health import ConnectionHealthCheck
 from utils.helpers import get_checkpoint_name, get_checkpoint_location
 
 # Initialize storage
@@ -57,8 +58,50 @@ st.markdown("""
         font-weight: bold;
         font-size: 1.2rem;
     }
+    .wifi-info-box {
+        background-color: #f0f2f6;
+        padding: 15px 20px;
+        border-radius: 10px;
+        margin: 5px 0;
+    }
+    .wifi-info-box strong {
+        color: #333;
+    }
     </style>
 """, unsafe_allow_html=True)
+
+
+def render_wifi_info(checkpoint: dict):
+    """Render WiFi information if configured"""
+    wifi_ssid = checkpoint.get("wifi_ssid")
+    wifi_password = checkpoint.get("wifi_password")
+
+    if wifi_ssid:
+        st.divider()
+        st.write("### 📶 WiFi Information")
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+            st.markdown(f"""
+            <div class="wifi-info-box">
+                <strong>Network:</strong> {wifi_ssid}
+            </div>
+            """, unsafe_allow_html=True)
+
+        with col2:
+            if wifi_password:
+                st.markdown(f"""
+                <div class="wifi-info-box">
+                    <strong>Password:</strong> {wifi_password}
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown("""
+                <div class="wifi-info-box">
+                    <strong>Password:</strong> None (Open Network)
+                </div>
+                """, unsafe_allow_html=True)
 
 # Session state initialization
 if "host_authenticated" not in st.session_state:
@@ -114,7 +157,10 @@ else:
             st.rerun()
             
     st.divider()
-    
+
+    # Connection Status Badge
+    ConnectionHealthCheck.render_status_badge()
+
     # 2. Time Synchronization Logic (Correction)
     # Use TimeService just to check sync status securely
     synced_time, is_synced = TimeService.get_current_time(settings["admin_timezone"])
@@ -164,7 +210,10 @@ else:
         
         if qr_mode == "static":
             # Static QR
-            qr_content = QRManager.generate_static_qr_content(checkpoint["id"])
+            qr_content = QRManager.generate_static_qr_content(
+                checkpoint["id"], 
+                sequence=checkpoint.get("current_qr_sequence", 0)
+            )
             qr_img = QRManager.generate_qr_image(qr_content, box_size=15)
             
             # Convert to bytes for display/download
@@ -187,7 +236,10 @@ else:
                 file_name=f"static_qr_{checkpoint['name']}.png",
                 mime="image/png"
             )
-            
+
+            # WiFi Information
+            render_wifi_info(checkpoint)
+
         else:
             # Dynamic QR
             refresh_interval = settings["qr_refresh_interval"]
@@ -245,6 +297,9 @@ else:
                 st.progress(progress)
                 
                 st.info("ℹ️ Dynamic Mode: Auto-refreshes for security.")
+
+            # WiFi Information
+            render_wifi_info(checkpoint)
 
             # Auto-refresh loop (1s)
             time_module.sleep(1)

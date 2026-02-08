@@ -51,6 +51,14 @@
   - 로컬 시간 조작 방지를 위한 World Time API 시간 동기화
   - 데이터 이력 보존을 위한 소프트 삭제 메커니즘
 
+- **향상된 사용자 경험 (v1.2)**
+  - **WiFi 정보 표시**: 방문객 편의를 위해 Host 화면에 네트워크 SSID/비밀번호 표시
+  - **연결 상태 모니터링**: 시각적 표시기로 실시간 서버 및 시간 API 상태 확인
+  - **사운드 피드백**: 스캔 성공/실패 시 오디오 확인음 (Web Audio API)
+  - **정보 기억하기**: 브라우저 localStorage를 통해 방문객 자격 증명 로컬 저장
+  - **키오스크 모드**: 체크포인트 공유 기기에서 연속 스캔 모드
+  - **고대비 QR**: 다양한 조명 조건을 위한 여러 표시 모드 (기본, 고대비, 반전)
+
 - **로컬 데이터 저장**
   - JSON 기반 저장 (외부 데이터베이스 불필요)
   - 스레드 안전 동시 접근
@@ -219,6 +227,64 @@ streamlit run app.py
 
 ---
 
+## v1.2 새 기능
+
+### WiFi 정보 표시 (Host)
+
+체크포인트 생성 시 WiFi 자격 증명을 선택적으로 설정할 수 있습니다. Host 페이지에서 방문객 편의를 위해 표시됩니다:
+
+- **WiFi SSID**: 방문객이 연결해야 하는 네트워크 이름
+- **WiFi 비밀번호**: 네트워크 비밀번호
+
+이는 방문객이 QR 스캔 페이지에 접근하기 위해 특정 네트워크에 연결해야 할 때 특히 유용합니다.
+
+### 연결 상태 모니터링
+
+Host와 Guest 페이지 모두 실시간 연결 상태를 표시합니다:
+
+| 상태 | 아이콘 | 설명 |
+|------|--------|------|
+| 전체 연결됨 | ✅ | 서버와 Time API 모두 접근 가능 |
+| 부분 연결 | ⚠️ | 서버 연결됨, Time API 접근 불가 (로컬 시간 사용) |
+| 연결 끊김 | ❌ | 서버에 접근할 수 없음 |
+
+### 사운드 피드백 (Guest)
+
+스캔 결과에 따라 오디오 피드백이 자동으로 재생됩니다:
+- **성공**: 체크인/체크아웃 성공 시 확인음
+- **오류**: 스캔 실패 시 경고음
+
+광범위한 브라우저 지원을 위해 Web Audio API와 HTML5 Audio 폴백을 사용합니다.
+
+### 정보 기억하기 (Guest)
+
+Guest 로그인 페이지에서 "정보 기억하기"를 활성화하여 자격 증명을 로컬에 저장:
+- 브라우저 localStorage 사용 (서버로 전송되지 않음)
+- 세션 간 유지
+- "기억 지우기" 버튼으로 삭제
+
+### 키오스크 모드 (Guest)
+
+체크포인트의 공유 기기용:
+- 로그인 후 "키오스크 모드" 체크박스 활성화
+- 재인증 없이 연속 스캔
+- 보안을 위한 5분 타임아웃
+- 개인 방문 기록 접근 불가
+
+### 고대비 QR 표시 (Host)
+
+환경에 따라 QR 표시 모드 선택:
+
+| 모드 | 채우기 색상 | 배경색 | 적합한 환경 |
+|------|------------|--------|-------------|
+| 기본 | 검정 | 흰색 | 표준 조명 |
+| 고대비 | 검정 | 노랑 | 밝은 환경 |
+| 반전 | 흰색 | 검정 | 어두운 환경 |
+
+크기 옵션: 작게 (8), 중간 (12), 크게 (16), 매우 크게 (20)
+
+---
+
 ## 사용 예시
 
 ### 시나리오 1: 사무실 건물 출입
@@ -284,7 +350,8 @@ qr_in_out/
 │   ├── auth.py             # 인증 및 비밀번호 해싱
 │   ├── qr_manager.py       # QR 생성, 검증, 서명
 │   ├── time_service.py     # World Time API를 통한 시간 동기화
-│   └── time_validator.py   # 시간 기반 접근 제어 검증
+│   ├── time_validator.py   # 시간 기반 접근 제어 검증
+│   └── connection_health.py # 연결 상태 모니터링 (v1.2)
 ├── utils/
 │   └── helpers.py          # 유틸리티 함수 (이메일 검증, 조회)
 ├── data/                   # JSON 저장 파일 (자동 생성)
@@ -292,6 +359,10 @@ qr_in_out/
 │   ├── guests.json
 │   ├── activity_logs.json
 │   └── admin_settings.json
+├── assets/
+│   └── sounds/             # 오디오 피드백 파일 (v1.2)
+│       ├── success.mp3
+│       └── error.mp3
 ├── docs/                   # 문서 및 기획 산출물
 │   └── planning-artifacts/
 │       ├── PRD-Overview.md
@@ -300,6 +371,95 @@ qr_in_out/
 │       └── PRD-Guest.md
 ├── requirements.txt        # Python 의존성
 └── README.md              # 이 파일
+```
+
+---
+
+## 네트워크 아키텍처
+
+QR In/Out은 조직의 필요에 따라 다양한 네트워크 배포 시나리오를 지원합니다.
+
+### 배포 시나리오
+
+#### 시나리오 1: LAN (동일 네트워크)
+**모든 기기가 동일한 로컬 네트워크에 있음**
+
+```
+[Streamlit 서버: 192.168.1.100:8501]
+         │
+    [로컬 라우터]
+    ┌────┴────┐
+    │         │
+[Host]    [Guest 모바일]
+```
+
+- **사용 사례**: 단일 사무실, 이벤트 장소
+- **설정**: 모든 기기가 동일한 WiFi에 연결
+- **Guest 접근**: `http://192.168.1.100:8501`
+
+#### 시나리오 2: 클라우드 배포
+**어디서나 접근 가능한 서버**
+
+```
+[인터넷]
+    │
+[퍼블릭 IP를 가진 클라우드 서버]
+    │
+[리버스 프록시 (nginx/Caddy)]
+    │
+[Streamlit: localhost:8501]
+```
+
+- **사용 사례**: 다중 시설, 원격 체크포인트
+- **설정**: 클라우드 제공업체(AWS, GCP, Azure 등)에 배포
+- **Guest 접근**: `https://yourdomain.com`
+
+#### 시나리오 3: VPN/원격 접근
+**분산된 위치를 위한 보안 원격 접근**
+
+```
+[본사]────[VPN 서버]────[원격 사무실]
+  │                         │
+[Streamlit 서버]       [Host 기기]
+```
+
+- **사용 사례**: 기업 네트워크, 고보안 환경
+- **설정**: VPN 터널을 통해 원격 사이트 연결
+
+### 방화벽 설정
+
+| 포트 | 프로토콜 | 방향 | 설명 |
+|------|----------|------|------|
+| 8501 | TCP | 인바운드 | Streamlit 기본 포트 |
+| 443 | TCP | 아웃바운드 | World Time API (HTTPS) |
+| 80 | TCP | 아웃바운드 | World Time API (HTTP 폴백) |
+
+### HTTPS 설정
+
+프로덕션 배포 시 HTTPS 사용을 권장합니다:
+
+**옵션 1: 리버스 프록시 (권장)**
+```nginx
+# nginx 설정
+server {
+    listen 443 ssl;
+    server_name yourdomain.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://localhost:8501;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+**옵션 2: Streamlit 내장 SSL**
+```bash
+streamlit run app.py --server.sslCertFile=cert.pem --server.sslKeyFile=key.pem
 ```
 
 ---
@@ -377,6 +537,8 @@ STREAMLIT_SERVER_PORT=8501
   "admin_password_hash": "hashed_password",
   "allowed_guests": ["guest_id_1", "guest_id_2"],
   "current_qr_sequence": 0,
+  "wifi_ssid": "사무실-게스트-WiFi",    # (v1.2) Host 화면 표시용 WiFi 네트워크 이름
+  "wifi_password": "guest1234",          # (v1.2) Host 화면 표시용 WiFi 비밀번호
   "deleted_at": null,
   "created_at": "2026-02-05T10:00:00Z",
   "updated_at": "2026-02-05T10:00:00Z"
